@@ -1,5 +1,7 @@
 package com.linkedin.datahub.upgrade.loadindices;
 
+import static com.linkedin.metadata.utils.UnknownDataHandlings.handling;
+
 import lombok.Data;
 
 @Data
@@ -12,8 +14,17 @@ public class LoadIndicesResult {
 
   @Override
   public String toString() {
-    return String.format(
-        "LoadIndicesResult{rowsProcessed=%d, ignored=%d, timeSqlQueryMs=%d, timeElasticsearchWriteMs=%d, unknownToRegistrySkipped=%d}",
-        rowsProcessed, ignored, timeSqlQueryMs, timeElasticsearchWriteMs, unknownToRegistrySkipped);
+    // Reported only when unknown data is tolerated, so the text is unchanged otherwise.
+    return handling().isTolerant()
+        ? String.format(
+            "LoadIndicesResult{rowsProcessed=%d, ignored=%d, timeSqlQueryMs=%d, timeElasticsearchWriteMs=%d, unknownToRegistrySkipped=%d}",
+            rowsProcessed,
+            ignored,
+            timeSqlQueryMs,
+            timeElasticsearchWriteMs,
+            unknownToRegistrySkipped)
+        : String.format(
+            "LoadIndicesResult{rowsProcessed=%d, ignored=%d, timeSqlQueryMs=%d, timeElasticsearchWriteMs=%d}",
+            rowsProcessed, ignored, timeSqlQueryMs, timeElasticsearchWriteMs);
   }
 }
