@@ -1,5 +1,7 @@
 package com.linkedin.datahub.upgrade.system.elasticsearch.steps;
 
+import static com.linkedin.metadata.utils.UnknownDataHandlings.handling;
+
 import com.linkedin.common.urn.Urn;
 import com.linkedin.datahub.upgrade.UpgradeContext;
 import com.linkedin.datahub.upgrade.UpgradeStep;
@@ -351,11 +353,13 @@ public class IncrementalReindexCatchUpStep implements UpgradeStep {
                     List<EbeanAspectV2> pageAspects =
                         page.filter(
                                 aspect ->
-                                    UNKNOWN_DATA.admitUrn(
-                                        opContext.getEntityRegistry(),
-                                        opContext.getMetricUtils(),
-                                        aspect.getUrn(),
-                                        aspect.getAspect()))
+                                    handling()
+                                        .admitUrn(
+                                            UNKNOWN_DATA,
+                                            opContext.getEntityRegistry(),
+                                            opContext.getMetricUtils(),
+                                            aspect.getUrn(),
+                                            aspect.getAspect()))
                             .collect(Collectors.toList());
 
                     List<SystemAspect> systemAspects =

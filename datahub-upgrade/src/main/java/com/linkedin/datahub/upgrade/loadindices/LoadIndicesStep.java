@@ -1,6 +1,7 @@
 package com.linkedin.datahub.upgrade.loadindices;
 
 import static com.linkedin.metadata.Constants.ASPECT_LATEST_VERSION;
+import static com.linkedin.metadata.utils.UnknownDataHandlings.handling;
 
 import com.datahub.util.RecordUtils;
 import com.linkedin.common.AuditStamp;
@@ -273,11 +274,13 @@ public class LoadIndicesStep implements UpgradeStep {
                         // Rows written by a newer version (entity type or aspect this registry
                         // does not know, e.g. after a rollback) cannot be indexed here. They are
                         // left in the database for the newer version to index.
-                        if (!UNKNOWN_DATA.admitUrn(
-                            opContext.getEntityRegistry(),
-                            opContext.getMetricUtils(),
-                            aspect.getKey().getUrn(),
-                            aspect.getKey().getAspect())) {
+                        if (!handling()
+                            .admitUrn(
+                                UNKNOWN_DATA,
+                                opContext.getEntityRegistry(),
+                                opContext.getMetricUtils(),
+                                aspect.getKey().getUrn(),
+                                aspect.getKey().getAspect())) {
                           result.unknownToRegistrySkipped++;
                           continue;
                         }
