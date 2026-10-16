@@ -2314,9 +2314,10 @@ public class EntityServiceImpl implements EntityService<ChangeItemImpl> {
                       result -> { // only versioned MCLs
                         MetadataChangeLog mcl = result.getMetadataChangeLog();
                         if (!handling().isTolerant()) {
-                          return !opContext
-                              .getEntityRegistry()
-                              .getEntitySpec(mcl.getEntityType())
+                          // Strict handling throws for an unknown entity type, as before.
+                          return !handling()
+                              .entitySpecForData(opContext.getEntityRegistry(), mcl.getEntityType())
+                              .orElseThrow()
                               .getAspectSpec(mcl.getAspectName())
                               .isTimeseries();
                         }
@@ -3319,10 +3320,11 @@ public class EntityServiceImpl implements EntityService<ChangeItemImpl> {
             mcl -> {
               if (!handling().isTolerant()) {
                 Urn entityUrn = mcl.getEntityUrn();
+                // Strict handling throws for an unknown entity type, as before.
                 AspectSpec aspectSpec =
-                    opContext
-                        .getEntityRegistry()
-                        .getEntitySpec(mcl.getEntityType())
+                    handling()
+                        .entitySpecForData(opContext.getEntityRegistry(), mcl.getEntityType())
+                        .orElseThrow()
                         .getAspectSpec(mcl.getAspectName());
                 return conditionallyProduceMCLAsync(opContext, aspectSpec, mcl);
               }
@@ -3797,7 +3799,9 @@ public class EntityServiceImpl implements EntityService<ChangeItemImpl> {
                             String.format(
                                 "Cannot delete %s: its entity type is not in the entity registry",
                                 urn)))
-            : opContext.getEntityRegistry().getEntitySpec(PegasusUtils.urnToEntityName(urn));
+            : handling()
+                .entitySpecForData(opContext.getEntityRegistry(), PegasusUtils.urnToEntityName(urn))
+                .orElseThrow();
     final AspectSpec keySpec = spec.getKeyAspectSpec();
     String keyAspectName = opContext.getKeyAspectName(urn);
 
