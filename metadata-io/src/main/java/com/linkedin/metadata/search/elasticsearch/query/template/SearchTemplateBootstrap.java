@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
@@ -34,7 +35,19 @@ public final class SearchTemplateBootstrap {
   static final String INDEX = "bootstrap_mcps.yaml";
   static final String ENTRY = "search-templates";
   private static final String ASPECT = "searchTemplateProperties";
-  private static final MustacheFactory MUSTACHE = new DefaultMustacheFactory();
+  // This pass only consumes delimiter switches. Interpolated values are JSON and must be inserted
+  // unchanged. The default factory HTML-encodes them.
+  private static final MustacheFactory MUSTACHE =
+      new DefaultMustacheFactory() {
+        @Override
+        public void encode(String value, Writer writer) {
+          try {
+            writer.write(value);
+          } catch (IOException e) {
+            throw new IllegalStateException("Could not render shipped search templates", e);
+          }
+        }
+      };
   private static final TypeReference<List<JsonNode>> ROWS = new TypeReference<>() {};
   private static final Object LOCK = new Object();
   private static final Set<String> LOGGED = ConcurrentHashMap.newKeySet();
@@ -127,7 +140,7 @@ public final class SearchTemplateBootstrap {
   }
 
   @Nonnull
-  private static String render(@Nonnull String raw, @Nonnull String location) {
+  static String render(@Nonnull String raw, @Nonnull String location) {
     Map<String, Object> scope = new HashMap<>();
     scope.put("auditStamp", RecordUtils.toJsonString(AuditStampUtils.createDefaultAuditStamp()));
     StringWriter writer = new StringWriter();

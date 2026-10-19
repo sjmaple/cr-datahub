@@ -95,9 +95,15 @@ public class SearchTemplateValidator extends AspectPayloadValidator {
       @Nonnull RetrieverContext retrieverContext) {
     ValidationExceptionCollection exceptions = ValidationExceptionCollection.newCollection();
     Map<String, SearchTemplateProperties> batch = proposed(mcpItems);
+    Set<String> deleted = new HashSet<>();
+    for (BatchItem item : mcpItems) {
+      if (ChangeType.DELETE.equals(item.getChangeType())) {
+        deleted.add(item.getUrn().toString());
+      }
+    }
     for (BatchItem item : mcpItems) {
       try {
-        validateItem(operationContext, item, retrieverContext, batch);
+        validateItem(operationContext, item, retrieverContext, batch, deleted);
       } catch (SearchTemplateException e) {
         exceptions.addException(AspectValidationException.forItem(item, e.getMessage()));
       }
@@ -129,7 +135,8 @@ public class SearchTemplateValidator extends AspectPayloadValidator {
       OperationFingerprint operationContext,
       BatchItem item,
       RetrieverContext retrieverContext,
-      @Nonnull Map<String, SearchTemplateProperties> batch) {
+      @Nonnull Map<String, SearchTemplateProperties> batch,
+      @Nonnull Set<String> deleted) {
     boolean systemActor = isSystemActor(item);
     boolean systemId = isSystemId(item.getUrn());
     if (ChangeType.DELETE.equals(item.getChangeType())) {
@@ -139,6 +146,12 @@ public class SearchTemplateValidator extends AspectPayloadValidator {
       SearchTemplateProperties stored = read(operationContext, item.getUrn(), retrieverContext);
       if (stored != null && !stored.isEditable() && !systemActor) {
         throw new SearchTemplateException("Search template is not editable");
+      }
+      // A child keeps this URN as parent. Deleting it fails the child's next load.
+      for (Urn child : childrenOf(item.getUrn(), retrieverContext)) {
+        if (!deleted.contains(child.toString())) {
+          throw new SearchTemplateException("Search template is still a parent of " + child);
+        }
       }
       return;
     }

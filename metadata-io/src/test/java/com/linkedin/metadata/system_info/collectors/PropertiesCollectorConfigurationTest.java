@@ -831,6 +831,7 @@ public class PropertiesCollectorConfigurationTest extends AbstractTestNGSpringCo
           "elasticsearch.search.v3.templates.concurrency.keepAlive",
           "elasticsearch.search.v3.templates.concurrency.maxPoolSize",
           "elasticsearch.search.v3.templates.concurrency.queueSize",
+          "elasticsearch.search.v3.templates.enabled",
           "elasticsearch.search.v3.templates.hybridKeywordScale",
           "elasticsearch.search.v3.templates.maxLeafClauses",
           "elasticsearch.search.v3.templates.maxParentDepth",

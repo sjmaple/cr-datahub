@@ -49,6 +49,15 @@ public class SearchTemplateBootstrapTest {
   }
 
   @Test
+  public void testBootstrapRenderKeepsJsonQuotes() {
+    String rendered = SearchTemplateBootstrap.render("stamp: {{auditStamp}}\n", "fixture");
+
+    assertTrue(rendered.contains("urn:li:corpuser:"));
+    assertFalse(rendered.contains("&quot;"));
+    assertFalse(rendered.contains("&amp;"));
+  }
+
+  @Test
   public void testClasspathIgnoresStorage() {
     harness.store(STRUCTURED, marker("STORED-MARKER"));
     SearchTemplateLoader loader = new SearchTemplateLoader(0, SearchTemplateSource.CLASSPATH);

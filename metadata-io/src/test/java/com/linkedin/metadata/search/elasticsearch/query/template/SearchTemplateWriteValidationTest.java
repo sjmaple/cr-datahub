@@ -153,6 +153,45 @@ public class SearchTemplateWriteValidationTest extends SearchTemplateFixture {
   }
 
   @Test
+  public void testDeleteRejectsARemainingChild() {
+    String parent = "urn:li:searchTemplate:custom";
+    String child = "urn:li:searchTemplate:child";
+    store(parent, body("Custom", "{ \"match_all\": {} }", null));
+    store(child, parentOf("Child", parent));
+    SearchTemplateValidator validator = templateValidator();
+    RetrieverContext retrieverContext = holeContext();
+    Urn parentUrn = UrnUtils.getUrn(parent);
+    assertTrue(
+        validate(validator, retrieverContext, item(parentUrn, SYSTEM, ChangeType.DELETE, null))
+            .stream()
+            .anyMatch(exception -> exception.getMessage().contains("still a parent")));
+
+    String alone = "urn:li:searchTemplate:alone";
+    store(alone, body("Alone", "{ \"match_all\": {} }", null));
+    assertTrue(
+        validate(
+                validator,
+                retrieverContext,
+                item(UrnUtils.getUrn(alone), SYSTEM, ChangeType.DELETE, null))
+            .isEmpty());
+
+    ChangeMCP deleteParent = item(parentUrn, SYSTEM, ChangeType.DELETE, null);
+    ChangeMCP deleteChild = item(UrnUtils.getUrn(child), SYSTEM, ChangeType.DELETE, null);
+    assertTrue(
+        validator
+            .validateProposed(opContext, List.of(deleteParent, deleteChild), retrieverContext, null)
+            .findAny()
+            .isEmpty());
+
+    store("urn:li:searchTemplate:other", parentOf("Other", parent));
+    assertTrue(
+        validator
+            .validateProposed(opContext, List.of(deleteParent, deleteChild), retrieverContext, null)
+            .findAny()
+            .isPresent());
+  }
+
+  @Test
   public void testParentQueryKeepsHolesAnInheritingChildFills() {
     String parent = "urn:li:searchTemplate:custom";
     store(parent, body("Custom", HOLE_QUERY, null));
@@ -305,6 +344,13 @@ public class SearchTemplateWriteValidationTest extends SearchTemplateFixture {
     RetrieverContext retrieverContext = pagedChildren();
     assertTrue(
         validate(validator, retrieverContext, queryWrite(over)).stream()
+            .anyMatch(exception -> exception.getMessage().contains("more inheriting children")));
+    assertTrue(
+        validate(
+                validator,
+                retrieverContext,
+                item(UrnUtils.getUrn(over), SYSTEM, ChangeType.DELETE, null))
+            .stream()
             .anyMatch(exception -> exception.getMessage().contains("more inheriting children")));
     assertTrue(validate(validator, retrieverContext, queryWrite(exact)).isEmpty());
   }
