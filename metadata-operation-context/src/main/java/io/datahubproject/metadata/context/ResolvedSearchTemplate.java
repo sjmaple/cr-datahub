@@ -75,10 +75,12 @@ public class ResolvedSearchTemplate {
     this.cacheIdentity = cacheIdentity;
   }
 
-  /** Every reachable rung, the viewer when a body references one, and whether rerank is armed. */
+  /**
+   * Every reachable rung, and the viewer when a body references one. Rerank is armed after the
+   * first batch, so it stays off this key.
+   */
   @Nonnull
   public String cacheKeyComponent() {
-    String identity = cacheIdentity == null ? urn + "@" + lastModified : cacheIdentity;
-    return identity + (knnApplied ? "@knn" : "");
+    return cacheIdentity == null ? urn + "@" + lastModified : cacheIdentity;
   }
 }

@@ -183,6 +183,30 @@ public class SearchTemplateWriteValidationTest extends SearchTemplateFixture {
             .findAny()
             .isEmpty());
 
+    SearchTemplateProperties moved = parentOf("Child", alone);
+    ChangeMCP reparent = item(UrnUtils.getUrn(child), SYSTEM, ChangeType.UPSERT, moved);
+    assertTrue(
+        validator
+            .validateProposed(opContext, List.of(deleteParent, reparent), retrieverContext, null)
+            .findAny()
+            .isEmpty());
+
+    SearchTemplateProperties cleared = body("Child", null, null);
+    ChangeMCP clearParent = item(UrnUtils.getUrn(child), SYSTEM, ChangeType.UPSERT, cleared);
+    assertTrue(
+        validator
+            .validateProposed(opContext, List.of(deleteParent, clearParent), retrieverContext, null)
+            .findAny()
+            .isEmpty());
+
+    SearchTemplateProperties kept = parentOf("Child", parent);
+    ChangeMCP keepParent = item(UrnUtils.getUrn(child), SYSTEM, ChangeType.UPSERT, kept);
+    assertTrue(
+        validator
+            .validateProposed(opContext, List.of(deleteParent, keepParent), retrieverContext, null)
+            .findAny()
+            .isPresent());
+
     store("urn:li:searchTemplate:other", parentOf("Other", parent));
     assertTrue(
         validator

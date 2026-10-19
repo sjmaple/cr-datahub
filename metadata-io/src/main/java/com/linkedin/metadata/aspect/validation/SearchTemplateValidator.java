@@ -149,9 +149,11 @@ public class SearchTemplateValidator extends AspectPayloadValidator {
       }
       // A child keeps this URN as parent. Deleting it fails the child's next load.
       for (Urn child : childrenOf(item.getUrn(), retrieverContext)) {
-        if (!deleted.contains(child.toString())) {
-          throw new SearchTemplateException("Search template is still a parent of " + child);
+        String childUrn = child.toString();
+        if (deleted.contains(childUrn) || reparented(batch, childUrn, item.getUrn())) {
+          continue;
         }
+        throw new SearchTemplateException("Search template is still a parent of " + child);
       }
       return;
     }
@@ -538,6 +540,21 @@ public class SearchTemplateValidator extends AspectPayloadValidator {
       return null;
     }
     return new SearchTemplateProperties(aspect.data());
+  }
+
+  /**
+   * A proposed aspect in this batch that no longer names {@code parent} has left. A child with no
+   * proposed aspect still uses the indexed parent.
+   */
+  private static boolean reparented(
+      @Nonnull Map<String, SearchTemplateProperties> batch,
+      @Nonnull String childUrn,
+      @Nonnull Urn parent) {
+    SearchTemplateProperties proposed = batch.get(childUrn);
+    if (proposed == null) {
+      return false;
+    }
+    return !proposed.hasParent() || !parent.equals(proposed.getParent());
   }
 
   @Nonnull

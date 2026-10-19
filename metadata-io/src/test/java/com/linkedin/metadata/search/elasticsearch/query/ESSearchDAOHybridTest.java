@@ -197,6 +197,11 @@ public class ESSearchDAOHybridTest {
       SearchResult result =
           templated.search(searching, ENTITY_NAMES, "revenue", null, null, 10, 10, List.of());
       assertEquals(rowIds(result), range(10, 20));
+      List<SortCriterion> byScore =
+          List.of(new SortCriterion().setField("_score").setOrder(SortOrder.DESCENDING));
+      SearchResult scored =
+          templated.search(searching, ENTITY_NAMES, "revenue", null, byScore, 10, 10, List.of());
+      assertEquals(rowIds(scored), range(10, 20));
       verify(reranker, never())
           .rerank(any(OperationContext.class), any(), any(), anyList(), any(), anyLong());
     } finally {

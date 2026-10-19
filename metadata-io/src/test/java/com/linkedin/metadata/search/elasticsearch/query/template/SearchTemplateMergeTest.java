@@ -370,12 +370,11 @@ public class SearchTemplateMergeTest extends SearchTemplateFixture {
     templates.getDefaults().put("fulltext", Map.of("default", "urn:li:searchTemplate:keywordOnly"));
     OperationContext keywordBound = semanticCoordinator.bind(opContext, "customer orders");
     assertFalse(keywordBound.getSearchContext().getResolvedSearchTemplate().isKnnApplied());
-    assertFalse(
-        keywordBound
-            .getSearchContext()
-            .getResolvedSearchTemplate()
-            .cacheKeyComponent()
-            .endsWith("@knn"));
+    String key = keywordBound.getSearchContext().getResolvedSearchTemplate().cacheKeyComponent();
+    keywordBound.getSearchContext().getResolvedSearchTemplate().setKnn(true, 1f, 1f, 100);
+    assertEquals(
+        keywordBound.getSearchContext().getResolvedSearchTemplate().cacheKeyComponent(), key);
+    assertFalse(key.endsWith("@knn"));
   }
 
   @Test

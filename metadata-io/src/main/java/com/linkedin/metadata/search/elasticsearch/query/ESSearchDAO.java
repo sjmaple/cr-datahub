@@ -1883,8 +1883,7 @@ public class ESSearchDAO {
     if (current != null) {
       current.setHighlightFields(served.highlights());
     }
-    boolean callerSort = sortCriteria != null && !sortCriteria.isEmpty();
-    coordinator.armServed(bound, callerSort ? null : served.urn());
+    coordinator.armServed(bound, isRelevanceSort(sortCriteria) ? served.urn() : null);
     return new BoundSearch(bound, served.page());
   }
 
