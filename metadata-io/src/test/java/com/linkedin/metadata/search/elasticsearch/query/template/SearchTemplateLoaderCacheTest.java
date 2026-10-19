@@ -2,7 +2,6 @@ package com.linkedin.metadata.search.elasticsearch.query.template;
 
 import static com.linkedin.metadata.Constants.CORP_USER_KEY_ASPECT_NAME;
 import static com.linkedin.metadata.Constants.SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME;
-import static com.linkedin.metadata.Constants.SYSTEM_ACTOR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -16,7 +15,6 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.linkedin.common.AuditStamp;
 import com.linkedin.common.urn.Urn;
 import com.linkedin.common.urn.UrnUtils;
 import com.linkedin.entity.Aspect;
@@ -31,7 +29,6 @@ import io.datahubproject.test.metadata.context.TestOperationContexts;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -46,8 +43,8 @@ public class SearchTemplateLoaderCacheTest {
   private static final long TTL_MILLIS = 60_000L;
 
   private final AtomicLong clock = new AtomicLong(1_000L);
-  private final Map<String, SearchTemplateProperties> indexed = new HashMap<>();
-  private final Map<String, SearchTemplateProperties> primary = new HashMap<>();
+  private final Map<String, SearchTemplateDocuments.Document> indexed = new HashMap<>();
+  private final Map<String, SearchTemplateDocuments.Document> primary = new HashMap<>();
   private final AtomicInteger documentReads = new AtomicInteger();
   private final AtomicInteger primaryReads = new AtomicInteger();
   private boolean failRead;
@@ -74,8 +71,26 @@ public class SearchTemplateLoaderCacheTest {
               if (!SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME.equals(aspect)) {
                 return null;
               }
-              SearchTemplateProperties properties = primary.get(urn.toString());
-              return properties == null ? null : new Aspect(properties.data().copy());
+              SearchTemplateDocuments.Document document = primary.get(urn.toString());
+              if (document == null || document.properties() == null) {
+                return null;
+              }
+              return new Aspect(document.properties().data().copy());
+            });
+    when(retriever.getLatestSystemAspect(any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Urn urn = invocation.getArgument(1);
+              String aspect = invocation.getArgument(2);
+              if (!SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME.equals(aspect)) {
+                return null;
+              }
+              SearchTemplateDocuments.Document document = primary.get(urn.toString());
+              if (document == null || document.properties() == null) {
+                return null;
+              }
+              return SearchTemplateFixtures.systemAspect(
+                  urn, document.properties(), document.modifiedAt());
             });
     when(retriever.getLatestAspectObjects(any(), any(), any()))
         .thenAnswer(
@@ -114,7 +129,7 @@ public class SearchTemplateLoaderCacheTest {
           if (failRead) {
             throw new IllegalStateException("search unavailable");
           }
-          Map<String, Optional<SearchTemplateProperties>> found = new LinkedHashMap<>();
+          Map<String, SearchTemplateDocuments.Document> found = new LinkedHashMap<>();
           for (String urn : urns) {
             if (!indexed.containsKey(urn)) {
               continue;
@@ -163,9 +178,7 @@ public class SearchTemplateLoaderCacheTest {
   @Test
   public void testParentChangeRemergesTheChildAndKeepsAnUnrelatedTemplate() {
     indexed.put(PARENT, body(PARENT, "{ \"term\": { \"name\": \"before\" } }", 1L));
-    SearchTemplateProperties child = body(CHILD, null, 1L);
-    child.setParent(UrnUtils.getUrn(PARENT));
-    indexed.put(CHILD, child);
+    indexed.put(CHILD, child(CHILD, PARENT, 1L));
     indexed.put(OTHER, body(OTHER, "{ \"match_all\": {} }", 1L));
     loader.load(opContext, PARENT);
     loader.load(opContext, CHILD);
@@ -182,12 +195,9 @@ public class SearchTemplateLoaderCacheTest {
 
   @Test
   public void testUnreadParentChangeRemergesTheChild() {
-    SearchTemplateProperties parent = body(PARENT, "{ \"term\": { \"name\": \"before\" } }", 1L);
-    primary.put(PARENT, parent);
+    primary.put(PARENT, body(PARENT, "{ \"term\": { \"name\": \"before\" } }", 1L));
     indexed.put(PARENT, body(PARENT, "{ \"term\": { \"name\": \"before\" } }", 1L));
-    SearchTemplateProperties child = body(CHILD, null, 1L);
-    child.setParent(UrnUtils.getUrn(PARENT));
-    indexed.put(CHILD, child);
+    indexed.put(CHILD, child(CHILD, PARENT, 1L));
     MergedSearchTemplate first = loader.load(opContext, CHILD);
     assertTrue(first.getQuery().contains("before"), first.getQuery());
     assertFalse(first.getQuery().contains("after"), first.getQuery());
@@ -202,9 +212,7 @@ public class SearchTemplateLoaderCacheTest {
   public void testUnchangedUnreadParentKeepsTheMergedChild() {
     primary.put(PARENT, body(PARENT, "{ \"term\": { \"name\": \"before\" } }", 1L));
     indexed.put(PARENT, body(PARENT, "{ \"term\": { \"name\": \"before\" } }", 1L));
-    SearchTemplateProperties child = body(CHILD, null, 1L);
-    child.setParent(UrnUtils.getUrn(PARENT));
-    indexed.put(CHILD, child);
+    indexed.put(CHILD, child(CHILD, PARENT, 1L));
     MergedSearchTemplate first = loader.load(opContext, CHILD);
     clock.addAndGet(TTL_MILLIS + 1);
     assertSame(loader.load(opContext, CHILD), first);
@@ -243,20 +251,18 @@ public class SearchTemplateLoaderCacheTest {
   @Test
   public void testACommitDuringTheReadIsVisibleOneTtlLater() {
     indexed.put(PARENT, body(PARENT, "{ \"term\": { \"name\": \"before\" } }", 1L));
-    SearchTemplateProperties child = body(CHILD, null, 1L);
-    child.setParent(UrnUtils.getUrn(PARENT));
-    indexed.put(CHILD, child);
+    indexed.put(CHILD, child(CHILD, PARENT, 1L));
     loader.load(opContext, PARENT);
     loader.installDocuments(
         (context, urns) -> {
           documentReads.incrementAndGet();
-          Map<String, Optional<SearchTemplateProperties>> found = new LinkedHashMap<>();
+          Map<String, SearchTemplateDocuments.Document> found = new LinkedHashMap<>();
           for (String urn : urns) {
             if (indexed.containsKey(urn)) {
               found.put(urn, copyIndexed(indexed.get(urn)));
             }
           }
-          if (urns.contains(PARENT) && indexed.get(PARENT).getLastModified().getTime() == 1L) {
+          if (urns.contains(PARENT) && indexed.get(PARENT).modifiedAt() == 1L) {
             indexed.put(PARENT, body(PARENT, "{ \"term\": { \"name\": \"after\" } }", 5_000L));
             clock.set(5_000L);
           }
@@ -293,32 +299,35 @@ public class SearchTemplateLoaderCacheTest {
     expectThrows(IllegalStateException.class, () -> loader.load(opContext, OTHER));
   }
 
-  private static Optional<SearchTemplateProperties> copyIndexed(
-      SearchTemplateProperties properties) {
-    if (properties == null) {
-      return Optional.empty();
+  private static SearchTemplateDocuments.Document copyIndexed(
+      SearchTemplateDocuments.Document document) {
+    if (document == null || document.properties() == null) {
+      return new SearchTemplateDocuments.Document(
+          null, document == null ? 0L : document.modifiedAt());
     }
     try {
-      return Optional.of(properties.copy());
+      return new SearchTemplateDocuments.Document(
+          document.properties().copy(), document.modifiedAt());
     } catch (CloneNotSupportedException e) {
       throw new IllegalStateException(e);
     }
   }
 
-  private static SearchTemplateProperties unstamped(String urn, String query) {
-    SearchTemplateProperties properties = new SearchTemplateProperties();
-    properties.setName(urn.substring(urn.lastIndexOf(':') + 1));
-    properties.setDialect(SearchTemplateDialect.ELASTICSEARCH);
-    properties.setEditable(true);
-    properties.setQuery(query);
-    try {
-      return properties.copy();
-    } catch (CloneNotSupportedException e) {
-      throw new IllegalStateException(e);
-    }
+  private static SearchTemplateDocuments.Document unstamped(String urn, String query) {
+    return new SearchTemplateDocuments.Document(properties(urn, query), 0L);
   }
 
-  private static SearchTemplateProperties body(String urn, String query, long modified) {
+  private static SearchTemplateDocuments.Document body(String urn, String query, long modified) {
+    return new SearchTemplateDocuments.Document(properties(urn, query), modified);
+  }
+
+  private static SearchTemplateDocuments.Document child(String urn, String parent, long modified) {
+    SearchTemplateProperties properties = properties(urn, null);
+    properties.setParent(UrnUtils.getUrn(parent));
+    return new SearchTemplateDocuments.Document(properties, modified);
+  }
+
+  private static SearchTemplateProperties properties(String urn, String query) {
     SearchTemplateProperties properties = new SearchTemplateProperties();
     properties.setName(urn.substring(urn.lastIndexOf(':') + 1));
     properties.setDialect(SearchTemplateDialect.ELASTICSEARCH);
@@ -326,8 +335,6 @@ public class SearchTemplateLoaderCacheTest {
     if (query != null) {
       properties.setQuery(query);
     }
-    properties.setLastModified(
-        new AuditStamp().setTime(modified).setActor(UrnUtils.getUrn(SYSTEM_ACTOR)));
     try {
       return properties.copy();
     } catch (CloneNotSupportedException e) {

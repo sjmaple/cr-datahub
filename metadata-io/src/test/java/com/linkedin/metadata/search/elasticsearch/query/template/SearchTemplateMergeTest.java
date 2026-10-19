@@ -10,7 +10,6 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
-import com.linkedin.common.AuditStamp;
 import com.linkedin.data.template.StringArray;
 import com.linkedin.data.template.StringMap;
 import com.linkedin.metadata.TestEntitySpecBuilder;
@@ -46,11 +45,9 @@ public class SearchTemplateMergeTest extends SearchTemplateFixture {
         { "functions": [], "score_mode": "multiply", "boost_mode": "multiply" }
         """);
     fulltext.setParameters(new StringMap(Map.of("deprecatedBoost", "0.25")));
-    store(SEARCH_TEMPLATE_FULLTEXT_URN, fulltext);
+    store(SEARCH_TEMPLATE_FULLTEXT_URN, fulltext, 50L);
     SearchTemplateProperties lineage = parentOf("Lineage", SEARCH_TEMPLATE_FULLTEXT_URN);
-    lineage.setLastModified(new AuditStamp().setTime(20L).setActor(SYSTEM));
-    fulltext.setLastModified(new AuditStamp().setTime(50L).setActor(SYSTEM));
-    store(SEARCH_TEMPLATE_LINEAGE_URN, lineage);
+    store(SEARCH_TEMPLATE_LINEAGE_URN, lineage, 20L);
 
     SearchTemplateRenderer renderer =
         new SearchTemplateRenderer(loader, new SearchConfiguration(), null);

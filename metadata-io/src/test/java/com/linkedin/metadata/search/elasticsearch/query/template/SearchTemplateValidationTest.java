@@ -1,10 +1,8 @@
 package com.linkedin.metadata.search.elasticsearch.query.template;
 
 import static com.linkedin.metadata.Constants.SEARCH_TEMPLATE_FULLTEXT_URN;
-import static com.linkedin.metadata.Constants.SYSTEM_ACTOR;
 import static org.testng.Assert.assertThrows;
 
-import com.linkedin.common.AuditStamp;
 import com.linkedin.common.UrnArray;
 import com.linkedin.common.urn.UrnUtils;
 import com.linkedin.data.template.StringArray;
@@ -171,8 +169,6 @@ public class SearchTemplateValidationTest {
     properties.setDialect(SearchTemplateDialect.ELASTICSEARCH);
     properties.setEditable(true);
     properties.setParent(UrnUtils.getUrn(parent));
-    properties.setLastModified(
-        new AuditStamp().setTime(1L).setActor(UrnUtils.getUrn(SYSTEM_ACTOR)));
     return properties;
   }
 
@@ -192,8 +188,6 @@ public class SearchTemplateValidationTest {
     if (sort != null) {
       properties.setSort(sort);
     }
-    properties.setLastModified(
-        new AuditStamp().setTime(1L).setActor(UrnUtils.getUrn(SYSTEM_ACTOR)));
     return properties;
   }
 

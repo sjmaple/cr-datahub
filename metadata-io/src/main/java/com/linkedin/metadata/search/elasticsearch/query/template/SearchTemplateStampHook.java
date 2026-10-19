@@ -3,7 +3,6 @@ package com.linkedin.metadata.search.elasticsearch.query.template;
 import static com.linkedin.metadata.Constants.SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME;
 
 import com.datahub.context.OperationFingerprint;
-import com.linkedin.entity.Aspect;
 import com.linkedin.metadata.aspect.RetrieverContext;
 import com.linkedin.metadata.aspect.batch.ChangeMCP;
 import com.linkedin.metadata.aspect.plugins.config.AspectPluginConfig;
@@ -15,14 +14,13 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Stream;
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 
 /**
- * Stamps {@code created} and {@code lastModified} on the aspect that will be written, including a
- * JSON patch once it has been applied to the stored aspect.
+ * Stores contract version 1 when a write omits {@code apiVersion}, including a JSON patch once it
+ * has been applied to the stored aspect. Write time stays on system metadata.
  */
 @Setter
 @Getter
@@ -44,25 +42,8 @@ public class SearchTemplateStampHook extends MutationHook {
         results.add(Pair.of(item, false));
         continue;
       }
-      SearchTemplateStamps.apply(item, properties, read(operationContext, item, retrieverContext));
-      results.add(Pair.of(item, true));
+      results.add(Pair.of(item, SearchTemplateStamps.apply(item, properties)));
     }
     return results.stream();
-  }
-
-  @Nullable
-  private static SearchTemplateProperties read(
-      @Nonnull OperationFingerprint operationContext,
-      @Nonnull ChangeMCP item,
-      @Nonnull RetrieverContext retrieverContext) {
-    Aspect aspect =
-        retrieverContext
-            .getAspectRetriever()
-            .getLatestAspectObject(
-                operationContext, item.getUrn(), SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME);
-    if (aspect == null || aspect.data() == null) {
-      return null;
-    }
-    return new SearchTemplateProperties(aspect.data());
   }
 }

@@ -10,13 +10,13 @@ import com.linkedin.metadata.search.elasticsearch.SearchClients;
 import com.linkedin.metadata.search.elasticsearch.index.entity.v3.EntitySearchIndexResolver;
 import com.linkedin.metadata.search.elasticsearch.index.entity.v3.MappingConstants;
 import com.linkedin.metadata.search.elasticsearch.index.entity.v3.V3SearchDocumentProjector;
+import com.linkedin.metadata.search.elasticsearch.query.template.SearchTemplateDocuments.Document;
 import com.linkedin.search.template.SearchTemplateProperties;
 import io.datahubproject.metadata.context.OperationContext;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import org.opensearch.action.search.SearchRequest;
@@ -38,7 +38,7 @@ public final class SearchTemplateDocumentSource implements SearchTemplateDocumen
 
   @Nonnull
   @Override
-  public Map<String, Optional<SearchTemplateProperties>> read(
+  public Map<String, Document> read(
       @Nonnull OperationContext opContext, @Nonnull Collection<String> urns) {
     if (urns.isEmpty()) {
       return Map.of();
@@ -61,7 +61,12 @@ public final class SearchTemplateDocumentSource implements SearchTemplateDocumen
                       + "."
                       + SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME
                       + "."
-                      + V3SearchDocumentProjector.ASPECT_JSON_FIELD
+                      + V3SearchDocumentProjector.ASPECT_JSON_FIELD,
+                  MappingConstants.ASPECTS_FIELD_NAME
+                      + "."
+                      + SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME
+                      + "."
+                      + V3SearchDocumentProjector.SYSTEM_METADATA_FIELD
                 },
                 new String[] {});
     SearchRequest request = new SearchRequest(index).source(source);
@@ -71,24 +76,27 @@ public final class SearchTemplateDocumentSource implements SearchTemplateDocumen
               .search(opContext, request, RequestOptions.DEFAULT)
               .getHits()
               .getHits();
-      Map<String, Optional<SearchTemplateProperties>> found = new LinkedHashMap<>();
+      Map<String, Document> found = new LinkedHashMap<>();
       for (SearchHit hit : hits) {
         JsonNode root = opContext.getObjectMapper().valueToTree(hit.getSourceAsMap());
         JsonNode urn = root.get(MappingConstants.URN_FIELD);
         if (urn == null || !urn.isTextual()) {
           continue;
         }
-        String aspectJson =
-            V3SearchDocumentProjector.aspectJson(
-                root.path(MappingConstants.ASPECTS_FIELD_NAME)
-                    .path(SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME));
+        JsonNode aspect =
+            root.path(MappingConstants.ASPECTS_FIELD_NAME)
+                .path(SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME);
+        String aspectJson = V3SearchDocumentProjector.aspectJson(aspect);
+        long modifiedAt =
+            SearchTemplateModified.at(aspect.path(V3SearchDocumentProjector.SYSTEM_METADATA_FIELD));
         if (aspectJson == null) {
-          found.put(urn.asText(), Optional.empty());
+          found.put(urn.asText(), new Document(null, modifiedAt));
         } else {
           found.put(
               urn.asText(),
-              Optional.of(
-                  RecordUtils.toRecordTemplate(SearchTemplateProperties.class, aspectJson)));
+              new Document(
+                  RecordUtils.toRecordTemplate(SearchTemplateProperties.class, aspectJson),
+                  modifiedAt));
         }
       }
       return found;

@@ -8,6 +8,7 @@ import com.linkedin.common.urn.UrnUtils;
 import com.linkedin.data.template.StringArray;
 import com.linkedin.entity.Aspect;
 import com.linkedin.metadata.aspect.AspectRetriever;
+import com.linkedin.metadata.aspect.SystemAspect;
 import com.linkedin.metadata.config.search.SearchTemplateSource;
 import com.linkedin.search.template.HighlightFieldOverrides;
 import com.linkedin.search.template.SearchFieldOverrides;
@@ -27,7 +28,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
@@ -246,7 +246,12 @@ public class SearchTemplateLoader {
       @Nonnull String urn,
       @Nonnull SearchTemplateProperties leaf) {
     return compose(
-        operationContext, retriever, urn, leaf, Map.of(), source == SearchTemplateSource.CLASSPATH);
+        operationContext,
+        retriever,
+        urn,
+        new TemplateCopy(leaf, 0L),
+        Map.of(),
+        source == SearchTemplateSource.CLASSPATH);
   }
 
   /**
@@ -265,9 +270,17 @@ public class SearchTemplateLoader {
         operationContext,
         retriever,
         urn,
-        leaf,
-        overrides,
+        new TemplateCopy(leaf, 0L),
+        copies(overrides),
         source == SearchTemplateSource.CLASSPATH);
+  }
+
+  @Nonnull
+  private static Map<String, TemplateCopy> copies(
+      @Nonnull Map<String, SearchTemplateProperties> overrides) {
+    Map<String, TemplateCopy> copies = new LinkedHashMap<>();
+    overrides.forEach((urn, properties) -> copies.put(urn, new TemplateCopy(properties, 0L)));
+    return copies;
   }
 
   @Nonnull
@@ -283,15 +296,17 @@ public class SearchTemplateLoader {
       @Nonnull OperationFingerprint operationContext,
       @Nonnull AspectRetriever retriever,
       @Nonnull String urn,
-      @Nonnull SearchTemplateProperties leaf,
-      @Nonnull Map<String, SearchTemplateProperties> overrides,
+      @Nonnull TemplateCopy leaf,
+      @Nonnull Map<String, TemplateCopy> overrides,
       boolean classpathBridge) {
-    List<SearchTemplateProperties> chain = new ArrayList<>();
+    List<TemplateCopy> chain = new ArrayList<>();
     List<String> urns = new ArrayList<>();
     chain.add(leaf);
     urns.add(urn);
     String current =
-        leaf.hasParent() && leaf.getParent() != null ? leaf.getParent().toString() : null;
+        leaf.properties().hasParent() && leaf.properties().getParent() != null
+            ? leaf.properties().getParent().toString()
+            : null;
     for (int depth = 1; current != null; depth++) {
       if (urns.contains(current)) {
         throw new SearchTemplateException("Search template parent cycle at " + current);
@@ -301,12 +316,11 @@ public class SearchTemplateLoader {
             "Search template parent chain exceeds " + maxParentDepth + " at " + urn);
       }
       urns.add(current);
-      SearchTemplateProperties properties =
-          resolve(operationContext, retriever, current, overrides);
-      chain.add(properties);
+      TemplateCopy resolved = resolve(operationContext, retriever, current, overrides);
+      chain.add(resolved);
       current =
-          properties.hasParent() && properties.getParent() != null
-              ? properties.getParent().toString()
+          resolved.properties().hasParent() && resolved.properties().getParent() != null
+              ? resolved.properties().getParent().toString()
               : null;
     }
 
@@ -331,7 +345,8 @@ public class SearchTemplateLoader {
     List<String> capabilities = null;
     // Root first so the child replaces sections it sets.
     for (int i = chain.size() - 1; i >= 0; i--) {
-      SearchTemplateProperties props = chain.get(i);
+      TemplateCopy copy = chain.get(i);
+      SearchTemplateProperties props = copy.properties();
       SearchTemplateCapabilities.requireDeclared(props);
       if (props.hasApiVersion() && props.getApiVersion() != null) {
         apiVersion = props.getApiVersion();
@@ -393,13 +408,11 @@ public class SearchTemplateLoader {
                 ? section.getTemplate().toString()
                 : null;
       }
-      if (props.hasLastModified() && props.getLastModified() != null) {
-        lastModified = Math.max(lastModified, props.getLastModified().getTime());
-      }
+      lastModified = Math.max(lastModified, copy.modifiedAt());
     }
     Map<String, String> queryFragments = new LinkedHashMap<>();
     queryFragmentParts.forEach((name, parts) -> queryFragments.put(name, String.join(", ", parts)));
-    builder.dialect(chain.get(0).getDialect().name());
+    builder.dialect(chain.get(0).properties().getDialect().name());
     builder.apiVersion(apiVersion == null ? SearchTemplateCapabilities.API_VERSION : apiVersion);
     builder.capabilities(capabilities == null ? List.of() : capabilities);
     builder.parameters(parameters);
@@ -461,12 +474,12 @@ public class SearchTemplateLoader {
   }
 
   @Nonnull
-  private SearchTemplateProperties resolve(
+  private TemplateCopy resolve(
       @Nonnull OperationFingerprint operationContext,
       @Nonnull AspectRetriever retriever,
       @Nonnull String urn,
-      @Nonnull Map<String, SearchTemplateProperties> overrides) {
-    SearchTemplateProperties overridden = overrides.get(urn);
+      @Nonnull Map<String, TemplateCopy> overrides) {
+    TemplateCopy overridden = overrides.get(urn);
     if (overridden != null) {
       return overridden;
     }
@@ -474,23 +487,25 @@ public class SearchTemplateLoader {
   }
 
   @Nonnull
-  private SearchTemplateProperties fetch(
+  private TemplateCopy fetch(
       @Nonnull OperationFingerprint operationContext,
       @Nonnull AspectRetriever retriever,
       @Nonnull String urn) {
     if (source != SearchTemplateSource.CLASSPATH) {
       Urn parsed = UrnUtils.getUrn(urn);
-      Aspect aspect =
-          retriever.getLatestAspectObject(
+      SystemAspect aspect =
+          retriever.getLatestSystemAspect(
               operationContext, parsed, SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME);
-      if (aspect != null && aspect.data() != null) {
-        return new SearchTemplateProperties(aspect.data());
+      SearchTemplateProperties properties =
+          aspect == null ? null : aspect.getAspect(SearchTemplateProperties.class);
+      if (properties != null) {
+        return new TemplateCopy(properties, SearchTemplateModified.at(aspect));
       }
     }
     SearchTemplateProperties shipped = shipped(urn);
     if (shipped != null) {
       SearchTemplateBootstrap.note(urn);
-      return shipped;
+      return new TemplateCopy(shipped, 0L);
     }
     throw new SearchTemplateException("Search template not found: " + urn);
   }
@@ -627,7 +642,7 @@ public class SearchTemplateLoader {
   @Nullable
   public SearchTemplateProperties read(@Nonnull OperationContext opContext, @Nonnull String urn) {
     try {
-      return fetch(opContext, opContext.getAspectRetriever(), urn);
+      return fetch(opContext, opContext.getAspectRetriever(), urn).properties();
     } catch (SearchTemplateException e) {
       return null;
     }
@@ -685,7 +700,7 @@ public class SearchTemplateLoader {
     }
 
     boolean fromSearch = documents != null && source != SearchTemplateSource.CLASSPATH;
-    Map<String, Optional<SearchTemplateProperties>> indexed =
+    Map<String, SearchTemplateDocuments.Document> indexed =
         fromSearch ? documents.read(opContext, read) : Map.of();
     Map<String, Held> raw = new LinkedHashMap<>();
     for (String key : read) {
@@ -722,14 +737,20 @@ public class SearchTemplateLoader {
       }
     }
 
-    Map<String, SearchTemplateProperties> overrides = new LinkedHashMap<>();
-    raw.forEach((key, held) -> overrides.put(key, held.properties));
+    Map<String, TemplateCopy> overrides = new LinkedHashMap<>();
+    raw.forEach((key, held) -> overrides.put(key, new TemplateCopy(held.properties, held.stamp)));
     AspectRetriever retriever = opContext.getAspectRetriever();
     for (String key : rebuild) {
       Held held = raw.get(key);
       merged.put(
           key,
-          compose(opContext, retriever, key, held.properties, overrides, held.classpathBridge));
+          compose(
+              opContext,
+              retriever,
+              key,
+              new TemplateCopy(held.properties, held.stamp),
+              overrides,
+              held.classpathBridge));
     }
 
     if (fromSearch
@@ -747,7 +768,7 @@ public class SearchTemplateLoader {
       }
     }
     if (!missing.isEmpty()) {
-      Map<String, Optional<SearchTemplateProperties>> extra =
+      Map<String, SearchTemplateDocuments.Document> extra =
           fromSearch ? documents.read(opContext, missing) : Map.of();
       for (String link : missing) {
         Held held = hold(opContext, link, fromSearch, extra);
@@ -781,8 +802,8 @@ public class SearchTemplateLoader {
 
   /**
    * A cached merge is current only when every link has a non-zero stamp, that stamp still matches,
-   * and the fetched body equals the cached document. Stamp 0 means {@code lastModified} was
-   * missing.
+   * and the fetched body equals the cached document. Stamp 0 means the aspect row had no system
+   * write time.
    */
   private static boolean stampsMatch(
       @Nonnull MergedSearchTemplate existing,
@@ -807,28 +828,23 @@ public class SearchTemplateLoader {
       @Nonnull OperationContext opContext,
       @Nonnull String urn,
       boolean fromSearch,
-      @Nonnull Map<String, Optional<SearchTemplateProperties>> indexed) {
+      @Nonnull Map<String, SearchTemplateDocuments.Document> indexed) {
     if (fromSearch && indexed.containsKey(urn)) {
-      SearchTemplateProperties storedDocument = indexed.get(urn).orElse(null);
-      if (storedDocument != null) {
-        return new Held(storedDocument, stamp(storedDocument), false);
+      SearchTemplateDocuments.Document storedDocument = indexed.get(urn);
+      if (storedDocument != null && storedDocument.properties() != null) {
+        return new Held(storedDocument.properties(), storedDocument.modifiedAt(), false);
       }
     }
     try {
       boolean bridge = source == SearchTemplateSource.CLASSPATH || !stored(opContext, urn);
-      SearchTemplateProperties properties = fetch(opContext, opContext.getAspectRetriever(), urn);
-      return new Held(properties, stamp(properties), bridge);
+      TemplateCopy loaded = fetch(opContext, opContext.getAspectRetriever(), urn);
+      return new Held(loaded.properties(), loaded.modifiedAt(), bridge);
     } catch (SearchTemplateException e) {
       return null;
     }
   }
 
-  private static long stamp(@Nonnull SearchTemplateProperties properties) {
-    if (properties.hasLastModified() && properties.getLastModified() != null) {
-      return properties.getLastModified().getTime();
-    }
-    return 0L;
-  }
+  private record TemplateCopy(@Nonnull SearchTemplateProperties properties, long modifiedAt) {}
 
   private static final class Held {
     private final SearchTemplateProperties properties;

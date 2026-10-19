@@ -22,6 +22,7 @@ import com.linkedin.entity.Aspect;
 import com.linkedin.identity.CorpUserInfo;
 import com.linkedin.metadata.aspect.CachingAspectRetriever;
 import com.linkedin.metadata.aspect.GraphRetriever;
+import com.linkedin.metadata.aspect.SystemAspect;
 import com.linkedin.metadata.config.search.ElasticSearchConfiguration;
 import com.linkedin.metadata.config.search.EntityIndexConfiguration;
 import com.linkedin.metadata.config.search.EntityIndexVersionConfiguration;
@@ -33,6 +34,7 @@ import com.linkedin.metadata.models.registry.EntityRegistry;
 import com.linkedin.metadata.search.ScrollResult;
 import com.linkedin.metadata.search.SearchEntity;
 import com.linkedin.metadata.search.SearchEntityArray;
+import com.linkedin.mxe.SystemMetadata;
 import com.linkedin.search.template.SearchFieldBoost;
 import com.linkedin.search.template.SearchFieldBoostArray;
 import com.linkedin.search.template.SearchFieldOverrides;
@@ -41,6 +43,7 @@ import com.linkedin.search.template.SearchTemplateProperties;
 import com.linkedin.search.template.StructuredPropertyClause;
 import com.linkedin.search.template.StructuredPropertyQuery;
 import com.linkedin.structured.StructuredPropertyDefinition;
+import com.linkedin.test.metadata.aspect.batch.TestSystemAspect;
 import io.datahubproject.metadata.context.OperationContext;
 import io.datahubproject.metadata.context.RetrieverContext;
 import io.datahubproject.test.metadata.context.TestOperationContexts;
@@ -76,6 +79,18 @@ public final class SearchTemplateFixtures {
 
   private SearchTemplateFixtures() {}
 
+  @Nonnull
+  static SystemAspect systemAspect(
+      @Nonnull Urn urn, @Nonnull SearchTemplateProperties properties, long modifiedAt) {
+    AuditStamp stamp = new AuditStamp().setTime(modifiedAt).setActor(UrnUtils.getUrn(SYSTEM_ACTOR));
+    return TestSystemAspect.builder()
+        .urn(urn)
+        .recordTemplate(properties)
+        .systemMetadata(new SystemMetadata().setAspectModified(stamp))
+        .auditStamp(stamp)
+        .build();
+  }
+
   /**
    * Numeric limits shipped in application.yaml. Tests that select templates do not load that file,
    * and the Java fields default to 0. Zero parent depth, cache size, or route ceilings reject the
@@ -106,6 +121,7 @@ public final class SearchTemplateFixtures {
   public static final class Harness {
     public final Map<Urn, StructuredPropertyDefinition> definitions = new HashMap<>();
     public final Map<Urn, SearchTemplateProperties> stored = new HashMap<>();
+    public final Map<Urn, Long> writtenAt = new HashMap<>();
     public final List<Property> properties = new ArrayList<>();
     public CachingAspectRetriever retriever;
     public OperationContext opContext;
@@ -118,6 +134,7 @@ public final class SearchTemplateFixtures {
     public void setup() {
       definitions.clear();
       stored.clear();
+      writtenAt.clear();
       properties.clear();
       SearchTemplates.install(null);
       registry = TestOperationContexts.systemContextNoSearchAuthorization().getEntityRegistry();
@@ -138,6 +155,20 @@ public final class SearchTemplateFixtures {
                 }
                 SearchTemplateProperties template = stored.get(urn);
                 return template == null ? null : new Aspect(template.data().copy());
+              });
+      Mockito.when(retriever.getLatestSystemAspect(Mockito.any(), Mockito.any(), Mockito.any()))
+          .thenAnswer(
+              invocation -> {
+                Urn urn = invocation.getArgument(1);
+                String aspect = invocation.getArgument(2);
+                if (!SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME.equals(aspect)) {
+                  return null;
+                }
+                SearchTemplateProperties template = stored.get(urn);
+                if (template == null) {
+                  return null;
+                }
+                return systemAspect(urn, template, writtenAt.getOrDefault(urn, 1L));
               });
       Mockito.when(retriever.getLatestAspectObjects(Mockito.any(), Mockito.any(), Mockito.any()))
           .thenAnswer(
@@ -229,11 +260,9 @@ public final class SearchTemplateFixtures {
     }
 
     public void store(@Nonnull String urn, @Nonnull SearchTemplateProperties properties) {
-      if (!properties.hasLastModified()) {
-        properties.setLastModified(
-            new AuditStamp().setTime(1L).setActor(UrnUtils.getUrn(SYSTEM_ACTOR)));
-      }
-      stored.put(UrnUtils.getUrn(urn), properties);
+      Urn parsed = UrnUtils.getUrn(urn);
+      stored.put(parsed, properties);
+      writtenAt.put(parsed, 1L);
       expire();
     }
 

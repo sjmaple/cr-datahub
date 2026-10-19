@@ -54,6 +54,11 @@ public class MergedSearchTemplate {
   @Nullable SearchTemplateBoostArray boosts;
   @Nullable HighlightFieldOverrides highlightFields;
   @Nonnull Map<String, String> parameters;
+
+  /**
+   * Latest {@code systemMetadata.aspectModified} time on this template and its parents. Zero when
+   * none of those rows recorded a write time.
+   */
   long lastModified;
 
   /** Compiled route patterns, in order. Empty when this template is pinned. */

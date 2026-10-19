@@ -328,7 +328,7 @@ public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
   }
 
   @Test
-  public void testStampHookWritesTimestampsAndTheMergeStaysCached() {
+  public void testStampHookWritesApiVersionAndTheMergeStaysCached() {
     Urn custom = UrnUtils.getUrn("urn:li:searchTemplate:custom");
     SearchTemplateProperties properties = body("Custom", "{ \"match_all\": {} }", null);
     ChangeMCP change =
@@ -346,9 +346,7 @@ public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
                 List.of("CREATE", "UPSERT", "UPDATE", "PATCH", "RESTATE")))
         .writeMutation(opContext, List.of(change), retrieverContext())
         .count();
-    assertTrue(properties.hasLastModified());
-    assertEquals(properties.getLastModified().getTime(), 5L);
-    assertTrue(properties.hasCreated());
+    assertEquals(properties.getApiVersion().intValue(), SearchTemplateCapabilities.API_VERSION);
 
     store(SEARCH_TEMPLATE_FULLTEXT_URN, body("Fulltext", "{ \"match_all\": {} }", null));
     assertTrue(

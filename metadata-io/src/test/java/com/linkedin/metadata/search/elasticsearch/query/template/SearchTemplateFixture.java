@@ -148,6 +148,7 @@ abstract class SearchTemplateFixture {
       """;
 
   protected final Map<Urn, SearchTemplateProperties> stored = new HashMap<>();
+  protected final Map<Urn, Long> writtenAt = new HashMap<>();
   protected final Map<Urn, StructuredPropertyDefinition> definitions = new HashMap<>();
   protected CachingAspectRetriever retriever;
   protected OperationContext opContext;
@@ -159,6 +160,7 @@ abstract class SearchTemplateFixture {
   @BeforeMethod
   public void setup() {
     stored.clear();
+    writtenAt.clear();
     definitions.clear();
     SearchTemplates.install(null);
     registry = TestOperationContexts.systemContextNoSearchAuthorization().getEntityRegistry();
@@ -175,6 +177,21 @@ abstract class SearchTemplateFixture {
               }
               SearchTemplateProperties properties = stored.get(urn);
               return properties == null ? null : new Aspect(properties.data().copy());
+            });
+    when(retriever.getLatestSystemAspect(any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              Urn urn = invocation.getArgument(1);
+              String aspect = invocation.getArgument(2);
+              if (!SEARCH_TEMPLATE_PROPERTIES_ASPECT_NAME.equals(aspect)) {
+                return null;
+              }
+              SearchTemplateProperties properties = stored.get(urn);
+              if (properties == null) {
+                return null;
+              }
+              return SearchTemplateFixtures.systemAspect(
+                  urn, properties, writtenAt.getOrDefault(urn, 1L));
             });
     when(retriever.getLatestAspectObjects(any(), any(), any()))
         .thenAnswer(
@@ -353,10 +370,13 @@ abstract class SearchTemplateFixture {
   }
 
   protected void store(String urn, SearchTemplateProperties properties) {
-    if (!properties.hasLastModified()) {
-      properties.setLastModified(new AuditStamp().setTime(1L).setActor(SYSTEM));
-    }
-    stored.put(UrnUtils.getUrn(urn), properties);
+    store(urn, properties, 1L);
+  }
+
+  protected void store(String urn, SearchTemplateProperties properties, long modifiedAt) {
+    Urn parsed = UrnUtils.getUrn(urn);
+    stored.put(parsed, properties);
+    writtenAt.put(parsed, modifiedAt);
   }
 
   protected static DataHubPolicyInfo domainPolicy(
