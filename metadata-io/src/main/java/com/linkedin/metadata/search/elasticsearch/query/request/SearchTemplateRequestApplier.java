@@ -87,8 +87,11 @@ public final class SearchTemplateRequestApplier {
       aggregations(opContext, searchFlags, facets, template)
           .forEach(searchSourceBuilder::aggregation);
     }
-    boolean callerSort = sortCriteria != null && !sortCriteria.isEmpty();
-    if (template != null && template.rescore() != null && !callerSort && !scroll && !countOnly) {
+    if (template != null
+        && template.rescore() != null
+        && relevanceSort(sortCriteria)
+        && !scroll
+        && !countOnly) {
       searchSourceBuilder.addRescorer(template.rescore());
       // Rescore requires score order. The URN tie-break keeps equal scores on one page.
       searchSourceBuilder.sort(new ScoreSortBuilder().order(SortOrder.DESC));
@@ -254,6 +257,20 @@ public final class SearchTemplateRequestApplier {
     sources.addAll(v3SearchQueryBuilder.copiedStructuredPropertyFields(opContext, entitySpecs));
     sources.add("urn");
     return new ArrayList<>(sources);
+  }
+
+  /** No sort, or only descending {@code _score} / {@code score}, keeps rescore. */
+  private static boolean relevanceSort(@Nullable List<SortCriterion> sortCriteria) {
+    if (sortCriteria == null || sortCriteria.isEmpty()) {
+      return true;
+    }
+    return sortCriteria.stream()
+        .allMatch(
+            criterion -> {
+              String field = criterion.getField();
+              return ("_score".equals(field) || "score".equals(field))
+                  && criterion.getOrder() != com.linkedin.metadata.query.filter.SortOrder.ASCENDING;
+            });
   }
 
   @Nonnull

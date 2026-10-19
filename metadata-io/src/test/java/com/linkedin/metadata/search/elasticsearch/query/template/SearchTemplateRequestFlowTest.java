@@ -155,6 +155,23 @@ public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
                 TEST_SEARCH_SERVICE_CONFIG)
             .getSearchRequest(searching, "customer orders", null, null, 0, 10, List.of());
     assertFalse(rescoredRequest.source().rescores().isEmpty());
+    SearchRequest scoreSort =
+        SearchRequestHandler.getBuilder(
+                searching,
+                TestEntitySpecBuilder.getSpec(),
+                elastic,
+                null,
+                QueryFilterRewriteChain.EMPTY,
+                TEST_SEARCH_SERVICE_CONFIG)
+            .getSearchRequest(
+                searching,
+                "customer orders",
+                null,
+                List.of(new SortCriterion().setField("_score").setOrder(SortOrder.DESCENDING)),
+                0,
+                10,
+                List.of());
+    assertFalse(scoreSort.source().rescores().isEmpty());
     assertEquals(rescoredRequest.source().sorts().size(), 2);
     assertTrue(rescoredRequest.source().sorts().get(0) instanceof ScoreSortBuilder);
     assertEquals(

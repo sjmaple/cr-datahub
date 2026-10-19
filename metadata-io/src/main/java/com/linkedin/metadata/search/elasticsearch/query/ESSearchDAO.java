@@ -1021,13 +1021,16 @@ public class ESSearchDAO {
 
   /** No sort, or only by descending score (the explain API's default), orders by relevance. */
   private static boolean isRelevanceSort(@Nullable List<SortCriterion> sortCriteria) {
-    return sortCriteria == null
-        || sortCriteria.stream()
-            .allMatch(
-                criterion ->
-                    "_score".equals(criterion.getField())
-                        && criterion.getOrder()
-                            != com.linkedin.metadata.query.filter.SortOrder.ASCENDING);
+    if (sortCriteria == null || sortCriteria.isEmpty()) {
+      return true;
+    }
+    return sortCriteria.stream().allMatch(ESSearchDAO::isScoreCriterion);
+  }
+
+  private static boolean isScoreCriterion(@Nonnull SortCriterion criterion) {
+    String field = criterion.getField();
+    return ("_score".equals(field) || "score".equals(field))
+        && criterion.getOrder() != com.linkedin.metadata.query.filter.SortOrder.ASCENDING;
   }
 
   /** Whether the filter targets a column. Shared with the template light-query gate. */
