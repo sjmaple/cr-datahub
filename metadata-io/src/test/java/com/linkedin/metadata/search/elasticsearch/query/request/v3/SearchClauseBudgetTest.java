@@ -29,6 +29,12 @@ public class SearchClauseBudgetTest {
   }
 
   @Test
+  public void testZeroClauseRoomSkipsFuzzyExpansions() {
+    SearchClauseBudget.FieldCounts packed = new SearchClauseBudget.FieldCounts(422, 0);
+    assertEquals(SearchClauseBudget.fuzzyExpansions("zorbel", "zorbel", packed, "zorbel~2"), 0);
+  }
+
+  @Test
   public void testQuotedQueryDropsFuzziness() {
     String query = "\"customer orders\"";
     String escaped = V3SearchQueryBuilder.escapeSimpleQueryStringOperators(query);

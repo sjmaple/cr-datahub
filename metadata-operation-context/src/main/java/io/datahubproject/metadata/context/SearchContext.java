@@ -104,6 +104,12 @@ public class SearchContext implements ContextInterface {
    */
   @Nullable private final ResolvedSearchTemplate resolvedSearchTemplate;
 
+  /**
+   * Filter lookups do not run a search template. The Java filter query is the lookup. Absent from
+   * equality and the cache key: it chooses the builder, not the stored result.
+   */
+  @EqualsAndHashCode.Exclude private final boolean skipTemplateExecution;
+
   public boolean isRestrictedSearch() {
     return Optional.ofNullable(searchFlags.isIncludeRestricted()).orElse(false);
   }
@@ -227,7 +233,8 @@ public class SearchContext implements ContextInterface {
           this.prioritizedSourceEntityTypes,
           this.prioritizedDatahubEntityTypes,
           this.searchSurface,
-          this.resolvedSearchTemplate);
+          this.resolvedSearchTemplate,
+          this.skipTemplateExecution);
     }
   }
 

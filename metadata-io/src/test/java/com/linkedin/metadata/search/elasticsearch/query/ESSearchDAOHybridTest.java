@@ -21,6 +21,8 @@ import static org.testng.Assert.assertEquals;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.linkedin.common.urn.Urn;
 import com.linkedin.common.urn.UrnUtils;
+import com.linkedin.metadata.Constants;
+import com.linkedin.metadata.config.search.ElasticSearchConfiguration;
 import com.linkedin.metadata.query.filter.SortCriterion;
 import com.linkedin.metadata.query.filter.SortOrder;
 import com.linkedin.metadata.search.SearchEntity;
@@ -28,9 +30,14 @@ import com.linkedin.metadata.search.SearchEntityArray;
 import com.linkedin.metadata.search.SearchResult;
 import com.linkedin.metadata.search.elasticsearch.index.entity.v3.Sha256UrnEntityDocumentIdHasher;
 import com.linkedin.metadata.search.elasticsearch.query.filter.QueryFilterRewriteChain;
+import com.linkedin.metadata.search.elasticsearch.query.template.SearchTemplateCoordinator;
+import com.linkedin.metadata.search.elasticsearch.query.template.SearchTemplateFixtures;
+import com.linkedin.metadata.search.elasticsearch.query.template.SearchTemplates;
 import com.linkedin.metadata.search.hybrid.HybridSearchResultReranker;
 import com.linkedin.metadata.utils.elasticsearch.SearchClientShim;
 import com.linkedin.metadata.utils.metrics.MetricUtils;
+import com.linkedin.search.template.SearchTemplateDialect;
+import com.linkedin.search.template.SearchTemplateProperties;
 import io.datahubproject.metadata.context.OperationContext;
 import io.datahubproject.metadata.context.ResolvedSearchTemplate;
 import io.datahubproject.test.metadata.context.TestOperationContexts;
@@ -154,6 +161,47 @@ public class ESSearchDAOHybridTest {
     assertEquals(result.getPageSize().intValue(), 10);
     verify(reranker, never())
         .rerank(any(OperationContext.class), any(), any(), anyList(), any(), anyLong());
+  }
+
+  @Test
+  public void testSearchUsesTheBoundTemplateKnnContext() throws IOException {
+    SearchTemplateFixtures.Harness harness = new SearchTemplateFixtures.Harness();
+    harness.setup();
+    SearchTemplateProperties template = new SearchTemplateProperties();
+    template.setName("Fulltext");
+    template.setDialect(SearchTemplateDialect.ELASTICSEARCH);
+    template.setEditable(true);
+    template.setQuery("{ \"match_all\": {} }");
+    template.setKnn("{ \"field\": \"embeddings.vector\", \"k\": 10 }");
+    harness.store(Constants.SEARCH_TEMPLATE_FULLTEXT_URN, template);
+    ElasticSearchConfiguration elastic = harness.elastic();
+    elastic.getEntityIndex().getV3().setSemanticReadEnabled(true);
+    SearchTemplates.install(new SearchTemplateCoordinator(elastic, null, harness.loader));
+    try {
+      OperationContext searching =
+          TestOperationContexts.withFixedSearchClient(harness.opContext, client)
+              .withSearchFlags(flags -> flags.setFulltext(true));
+      SearchResponse keywordResponse = response(100);
+      when(client.search(any(OperationContext.class), any(), eq(RequestOptions.DEFAULT)))
+          .thenReturn(keywordResponse);
+      ESSearchDAO templated =
+          new ESSearchDAO(
+              false,
+              elastic,
+              null,
+              QueryFilterRewriteChain.EMPTY,
+              false,
+              TEST_SEARCH_SERVICE_CONFIG,
+              new Sha256UrnEntityDocumentIdHasher(),
+              reranker);
+      SearchResult result =
+          templated.search(searching, ENTITY_NAMES, "revenue", null, null, 10, 10, List.of());
+      assertEquals(rowIds(result), range(10, 20));
+      verify(reranker, never())
+          .rerank(any(OperationContext.class), any(), any(), anyList(), any(), anyLong());
+    } finally {
+      SearchTemplates.install(null);
+    }
   }
 
   @Test

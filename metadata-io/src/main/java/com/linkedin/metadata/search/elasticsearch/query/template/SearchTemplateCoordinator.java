@@ -92,8 +92,14 @@ public class SearchTemplateCoordinator {
         true, rollout(), surface, SearchTemplateRollout.bucketKey(actor(opContext), surface));
   }
 
-  /** This request serves the template query. Shadow and off stay on the Java builder. */
+  /**
+   * This request serves the template query. Shadow, off, and filter lookups stay on the Java
+   * builder.
+   */
   public boolean executes(@Nonnull OperationContext opContext) {
+    if (opContext.getSearchContext().isSkipTemplateExecution()) {
+      return false;
+    }
     return effect(opContext) == SearchTemplateRollout.Effect.ACTIVE;
   }
 

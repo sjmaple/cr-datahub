@@ -337,6 +337,22 @@ public class OperationContext implements AuthorizationSession, OperationFingerpr
     return OperationContext.withReadPreference(this, readPreference);
   }
 
+  /**
+   * Filter lookups skip template execution and keep the Java filter query. Does not change the
+   * search surface or the template a user search would select.
+   */
+  @Nonnull
+  public OperationContext withSkipTemplateExecution(boolean skipTemplateExecution) {
+    try {
+      return toBuilder()
+          .searchContext(
+              getSearchContext().toBuilder().skipTemplateExecution(skipTemplateExecution).build())
+          .build(getSessionActorContext(), false);
+    } catch (OperationContextException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   /** Tags the search surface used to select a query template. Does not select the template. */
   @Nonnull
   public OperationContext withSearchSurface(@Nullable String searchSurface) {

@@ -118,6 +118,18 @@ public class SearchTemplateRolloutTest {
   }
 
   @Test
+  public void testFilterLookupSkipsTemplateExecution() {
+    open();
+    harness.templates.getRollout().setMode("active");
+    SearchTemplateCoordinator coordinator =
+        new SearchTemplateCoordinator(harness.elastic(), null, harness.loader);
+    OperationContext search =
+        harness.opContext.withSearchSurface(SearchTemplateSurfaces.SEARCH_ENTITIES);
+    assertTrue(coordinator.executes(search));
+    assertFalse(coordinator.executes(search.withSkipTemplateExecution(true)));
+  }
+
+  @Test
   public void testShadowRendersAndRollbackKeepsTheJavaQuery() {
     open();
     harness.templates.getRollout().setMode("shadow");

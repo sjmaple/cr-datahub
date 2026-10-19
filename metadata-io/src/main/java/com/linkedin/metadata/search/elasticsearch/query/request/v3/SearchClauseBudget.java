@@ -115,7 +115,7 @@ public final class SearchClauseBudget {
         CLAUSE_BUDGET
             - termClauses(operatorEscaped, counts)
             - (long) termCount(operatorEscaped) * counts.fields();
-    if (room < 0) {
+    if (room <= 0) {
       return 0;
     }
     return (int) Math.min(MAX_FUZZY_EXPANSIONS, 1 + room / (fuzzyTerms * counts.fields()));

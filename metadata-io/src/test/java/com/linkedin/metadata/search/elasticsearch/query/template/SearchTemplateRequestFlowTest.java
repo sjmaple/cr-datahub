@@ -65,6 +65,7 @@ import com.linkedin.search.template.SearchTemplateBoostArray;
 import com.linkedin.search.template.SearchTemplateProperties;
 import io.datahubproject.metadata.context.OperationContext;
 import io.datahubproject.metadata.context.ResolvedSearchTemplate;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,8 +77,8 @@ import org.opensearch.client.core.CountRequest;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
 import org.opensearch.search.builder.SearchSourceBuilder;
-import org.opensearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.opensearch.search.sort.FieldSortBuilder;
+import org.opensearch.search.sort.ScoreSortBuilder;
 import org.testng.annotations.Test;
 
 public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
@@ -154,8 +155,17 @@ public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
                 TEST_SEARCH_SERVICE_CONFIG)
             .getSearchRequest(searching, "customer orders", null, null, 0, 10, List.of());
     assertFalse(rescoredRequest.source().rescores().isEmpty());
-    assertTrue(
-        rescoredRequest.source().sorts() == null || rescoredRequest.source().sorts().isEmpty());
+    assertEquals(rescoredRequest.source().sorts().size(), 2);
+    assertTrue(rescoredRequest.source().sorts().get(0) instanceof ScoreSortBuilder);
+    assertEquals(
+        ((ScoreSortBuilder) rescoredRequest.source().sorts().get(0)).order(),
+        org.opensearch.search.sort.SortOrder.DESC);
+    assertTrue(rescoredRequest.source().sorts().get(1) instanceof FieldSortBuilder);
+    assertEquals(
+        ((FieldSortBuilder) rescoredRequest.source().sorts().get(1)).getFieldName(), "urn");
+    assertEquals(
+        ((FieldSortBuilder) rescoredRequest.source().sorts().get(1)).order(),
+        org.opensearch.search.sort.SortOrder.ASC);
     SearchRequest countOnly =
         SearchRequestHandler.getBuilder(
                 searching,
@@ -644,10 +654,7 @@ public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
             new ResolvedSearchTemplate(
                 "urn:li:searchTemplate:literalHighlight", 1L, "fulltext", null));
     SearchRequest request = searchRequest(bound, elastic, "orders");
-    assertNotNull(request.source().highlighter());
-    List<String> names =
-        request.source().highlighter().fields().stream().map(field -> field.name()).toList();
-    assertEquals(names, List.of("tags_1"));
+    assertNull(request.source().highlighter());
 
     store(SEARCH_TEMPLATE_FULLTEXT_URN, body("Fulltext", "{ \"match_all\": {} }", null));
     OperationContext empty =
@@ -678,7 +685,7 @@ public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
     OperationContext searching =
         opContext
             .withSearchFlags(
-                flags -> flags.setFulltext(true).setSkipHighlighting(false).setSkipAggregates(true))
+                flags -> flags.setFulltext(true).setSkipHighlighting(true).setSkipAggregates(true))
             .withResolvedSearchTemplate(
                 new ResolvedSearchTemplate(SEARCH_TEMPLATE_FULLTEXT_URN, 1L, "fulltext", null));
     SearchRequestHandler handler =
@@ -716,6 +723,11 @@ public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
           }
         }
         """);
+    assertNull(prepared.request().source().highlighter());
+    assertTrue(
+        Arrays.stream(prepared.request().source().fetchSource().includes())
+            .anyMatch(path -> "name".equals(path) || path.startsWith("name.")),
+        Arrays.toString(prepared.request().source().fetchSource().includes()));
     SearchResult result =
         handler.extractResult(searching, response, null, 0, 10, prepared.template());
     assertEquals(result.getEntities().size(), 1);
@@ -799,7 +811,7 @@ public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
       SearchRequest count = searchRequest(searching, elastic, "customer orders", 0);
       assertTrue(hits.source().query().toString().contains("customer orders"));
       assertTrue(count.source().query().toString().contains("customer orders"));
-      assertFalse(hits.source().highlighter().fields().isEmpty());
+      assertNull(hits.source().highlighter());
       assertFalse(hits.source().rescores().isEmpty());
       assertNotNull(hits.source().suggest());
       assertNull(count.source().highlighter());
@@ -988,9 +1000,7 @@ public class SearchTemplateRequestFlowTest extends SearchTemplateFixture {
             List.of(TestEntitySpecBuilder.getSpec()),
             null,
             3,
-            null,
-            (context, flags) -> new HighlightBuilder(),
-            (context, fields) -> new HighlightBuilder());
+            null);
     RenderedSearchTemplate template =
         new RenderedSearchTemplate(
             QueryBuilders.matchAllQuery(),

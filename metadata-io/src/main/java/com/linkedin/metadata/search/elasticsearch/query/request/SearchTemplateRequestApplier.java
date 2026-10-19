@@ -30,12 +30,12 @@ import javax.annotation.Nullable;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.aggregations.AggregationBuilder;
 import org.opensearch.search.builder.SearchSourceBuilder;
-import org.opensearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.opensearch.search.sort.FieldSortBuilder;
+import org.opensearch.search.sort.ScoreSortBuilder;
 import org.opensearch.search.sort.SortBuilder;
 import org.opensearch.search.sort.SortOrder;
 
-/** Template aggregations, highlighting, rescore, sort, and matched fields. */
+/** Template aggregations, rescore, sort, and matched fields. */
 public final class SearchTemplateRequestApplier {
   private final AggregationQueryBuilder aggregationQueryBuilder;
   private final int maxTermBucketSize;
@@ -43,21 +43,6 @@ public final class SearchTemplateRequestApplier {
   @Nullable private final SearchFieldResolver v3SearchFieldResolver;
   private final int v3MinWordLength;
   @Nullable private final V3SearchQueryBuilder v3SearchQueryBuilder;
-  private final StandardHighlight standardHighlight;
-  private final SelectiveHighlight selectiveHighlight;
-
-  @FunctionalInterface
-  public interface StandardHighlight {
-    @Nonnull
-    HighlightBuilder highlight(
-        @Nonnull OperationContext opContext, @Nonnull SearchFlags searchFlags);
-  }
-
-  @FunctionalInterface
-  public interface SelectiveHighlight {
-    @Nonnull
-    HighlightBuilder highlight(@Nonnull OperationContext opContext, @Nonnull Set<String> fields);
-  }
 
   public SearchTemplateRequestApplier(
       @Nonnull AggregationQueryBuilder aggregationQueryBuilder,
@@ -65,17 +50,13 @@ public final class SearchTemplateRequestApplier {
       @Nonnull List<EntitySpec> entitySpecs,
       @Nullable SearchFieldResolver v3SearchFieldResolver,
       int v3MinWordLength,
-      @Nullable V3SearchQueryBuilder v3SearchQueryBuilder,
-      @Nonnull StandardHighlight standardHighlight,
-      @Nonnull SelectiveHighlight selectiveHighlight) {
+      @Nullable V3SearchQueryBuilder v3SearchQueryBuilder) {
     this.aggregationQueryBuilder = aggregationQueryBuilder;
     this.maxTermBucketSize = maxTermBucketSize;
     this.entitySpecs = entitySpecs;
     this.v3SearchFieldResolver = v3SearchFieldResolver;
     this.v3MinWordLength = v3MinWordLength;
     this.v3SearchQueryBuilder = v3SearchQueryBuilder;
-    this.standardHighlight = standardHighlight;
-    this.selectiveHighlight = selectiveHighlight;
   }
 
   public void apply(
@@ -88,16 +69,17 @@ public final class SearchTemplateRequestApplier {
       boolean scroll,
       @Nullable Integer size,
       @Nonnull String input) {
-    // A count has no hits to highlight, rescore, or suggest. The lexical query and facets still
-    // run, including a ladder that rejects a zero page and continues to the full query.
+    // A count has no hits to rescore or suggest. The lexical query and facets still run,
+    // including a ladder that rejects a zero page and continues to the full query. Search V3
+    // leaves highlighting off; skipHighlighting does not decide it. Matched fields still need
+    // the queried _source paths.
     boolean countOnly = size != null && size == 0;
-    boolean highlight = !countOnly && Boolean.FALSE.equals(searchFlags.isSkipHighlighting());
     String[] includes =
         Stream.concat(
                 SearchDocFieldFetchConfig.resolve(
                     SearchDocFieldFetchConfig.DEFAULT_FIELDS_TO_FETCH_ON_SCROLL, searchFlags)
                     .stream(),
-                highlight ? matchedFieldSources(opContext, template).stream() : Stream.empty())
+                countOnly ? Stream.empty() : matchedFieldSources(opContext, template).stream())
             .distinct()
             .toArray(String[]::new);
     searchSourceBuilder.fetchSource(includes, null);
@@ -105,16 +87,12 @@ public final class SearchTemplateRequestApplier {
       aggregations(opContext, searchFlags, facets, template)
           .forEach(searchSourceBuilder::aggregation);
     }
-    if (highlight) {
-      HighlightBuilder highlightBuilder = highlight(opContext, searchFlags, template);
-      // An empty highlighter serializes without fields. Elasticsearch 8 rejects that.
-      if (!highlightBuilder.fields().isEmpty()) {
-        searchSourceBuilder.highlighter(highlightBuilder);
-      }
-    }
     boolean callerSort = sortCriteria != null && !sortCriteria.isEmpty();
     if (template != null && template.rescore() != null && !callerSort && !scroll && !countOnly) {
       searchSourceBuilder.addRescorer(template.rescore());
+      // Rescore requires score order. The URN tie-break keeps equal scores on one page.
+      searchSourceBuilder.sort(new ScoreSortBuilder().order(SortOrder.DESC));
+      searchSourceBuilder.sort(new FieldSortBuilder("urn").order(SortOrder.ASC));
     } else {
       sort(searchSourceBuilder, sortCriteria, template);
     }
@@ -154,7 +132,11 @@ public final class SearchTemplateRequestApplier {
         byName.put(aggregation.getName(), aggregation);
       }
     }
-    int cap = Math.min(searchFlags.getMaxAggValues(), maxTermBucketSize);
+    int requested =
+        searchFlags.hasMaxAggValues() && searchFlags.getMaxAggValues() != null
+            ? searchFlags.getMaxAggValues()
+            : maxTermBucketSize;
+    int cap = Math.min(requested, maxTermBucketSize);
     for (AggregationBuilder aggregation : template.aggregations()) {
       if (reserved.contains(aggregation.getName())) {
         continue;
@@ -186,22 +168,6 @@ public final class SearchTemplateRequestApplier {
       return;
     }
     ESUtils.buildSortOrder(searchSourceBuilder, sortCriteria, entitySpecs, v3SearchFieldResolver);
-  }
-
-  @Nonnull
-  private HighlightBuilder highlight(
-      @Nonnull OperationContext opContext,
-      @Nonnull SearchFlags searchFlags,
-      @Nullable RenderedSearchTemplate template) {
-    if (template == null) {
-      return standardHighlight.highlight(opContext, searchFlags);
-    }
-    List<String> highlights = template.highlights();
-    if (highlights.isEmpty()) {
-      return new HighlightBuilder().numOfFragments(0);
-    }
-    LinkedHashSet<String> named = new LinkedHashSet<>(highlights);
-    return selectiveHighlight.highlight(opContext, named);
   }
 
   @Nonnull

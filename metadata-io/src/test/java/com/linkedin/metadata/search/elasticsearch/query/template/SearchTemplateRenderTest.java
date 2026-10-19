@@ -5,6 +5,7 @@ import static io.datahubproject.test.search.SearchTestUtils.TEST_SEARCH_SERVICE_
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -259,9 +260,7 @@ public class SearchTemplateRenderTest {
                 new ResolvedSearchTemplate("urn:li:searchTemplate:facets", 1L, "fulltext", null))
             .withSearchFlags(flags -> flags.setMaxAggValues(200));
     SearchRequest request = request(bound, harness.elastic());
-    List<String> names =
-        request.source().highlighter().fields().stream().map(field -> field.name()).toList();
-    assertEquals(names, List.of("glossaryTerm"));
+    assertNull(request.source().highlighter());
     TermsAggregationBuilder facet =
         request.source().aggregations().getAggregatorFactories().stream()
             .filter(aggregation -> "templateFacet".equals(aggregation.getName()))

@@ -218,9 +218,7 @@ public class SearchRequestHandler extends BaseRequestHandler {
             entitySpecs,
             v3SearchFieldResolver,
             v3MinWordLength,
-            v3SearchQueryBuilder,
-            this::getHighlightBuilder,
-            (context, fields) -> buildHighlightsWithSelectiveExpansion(context, fields, fields));
+            v3SearchQueryBuilder);
   }
 
   public static SearchRequestHandler getBuilder(

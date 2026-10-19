@@ -509,7 +509,7 @@ public class ESSearchDAO {
           hybridFetchSize(opContext, entityNames, input, sortCriteria, from, size);
       final int requestFrom = hybridFetchSize > 0 ? 0 : from;
       final Integer requestSize = hybridFetchSize > 0 ? hybridFetchSize : size;
-      final SearchResult result =
+      final BoundSearch searched =
           searchWithTemplates(
               opContext,
               entityNames,
@@ -520,7 +520,7 @@ public class ESSearchDAO {
               requestSize,
               facets);
       return finishTemplateHybrid(
-          opContext, entityNames, input, result, from, size, hybridFetchSize);
+          searched.context(), entityNames, input, searched.result(), from, size, hybridFetchSize);
     }
 
     // A hybrid search fetches the keyword rows from the top to rerank them, then slices the page
@@ -1834,8 +1834,11 @@ public class ESSearchDAO {
       @Nullable Filter filter,
       @Nonnull List<EntitySpec> entitySpecs) {}
 
+  /** The context {@code armServed} updated, plus the page that search returned. */
+  private record BoundSearch(@Nonnull OperationContext context, @Nonnull SearchResult result) {}
+
   @Nonnull
-  private SearchResult searchWithTemplates(
+  private BoundSearch searchWithTemplates(
       @Nonnull OperationContext opContext,
       @Nonnull List<String> entityNames,
       @Nonnull String input,
@@ -1846,13 +1849,16 @@ public class ESSearchDAO {
       @Nonnull List<String> facets) {
     SearchTemplateCoordinator coordinator = SearchTemplates.current();
     if (coordinator == null || !coordinator.executes(opContext)) {
-      return searchOnce(
-          opContext, entityNames, input, postFilters, sortCriteria, from, size, facets);
+      return new BoundSearch(
+          opContext,
+          searchOnce(opContext, entityNames, input, postFilters, sortCriteria, from, size, facets));
     }
     OperationContext bound = bindTemplates(opContext, input, false, entityNames);
     ResolvedSearchTemplate resolved = bound.getSearchContext().getResolvedSearchTemplate();
     if (resolved == null) {
-      return searchOnce(bound, entityNames, input, postFilters, sortCriteria, from, size, facets);
+      return new BoundSearch(
+          bound,
+          searchOnce(bound, entityNames, input, postFilters, sortCriteria, from, size, facets));
     }
     SearchTemplateWalk.Served<SearchResult> served =
         SearchTemplateWalk.walk(
@@ -1879,7 +1885,7 @@ public class ESSearchDAO {
     }
     boolean callerSort = sortCriteria != null && !sortCriteria.isEmpty();
     coordinator.armServed(bound, callerSort ? null : served.urn());
-    return served.page();
+    return new BoundSearch(bound, served.page());
   }
 
   /**
