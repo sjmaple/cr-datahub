@@ -235,6 +235,12 @@ public class SemanticSearchService {
                       if (incomingFlags != null && incomingFlags.hasMaxAggValues()) {
                         flags.setMaxAggValues(incomingFlags.getMaxAggValues());
                       }
+                      if (incomingFlags != null && incomingFlags.hasSearchTemplate()) {
+                        flags.setSearchTemplate(incomingFlags.getSearchTemplate());
+                      }
+                      if (incomingFlags != null && incomingFlags.hasIncludeExplain()) {
+                        flags.setIncludeExplain(incomingFlags.isIncludeExplain());
+                      }
                       return flags;
                     }),
                 entityNames,
