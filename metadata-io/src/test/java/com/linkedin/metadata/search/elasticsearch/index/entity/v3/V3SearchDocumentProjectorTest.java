@@ -573,6 +573,10 @@ public class V3SearchDocumentProjectorTest {
     assertEquals(mapping.get("type"), "text");
     assertEquals(mapping.get("index"), false);
     assertTrue(aspectMapping.containsKey("parent"));
+    assertEquals(((Map<String, Object>) aspectMapping.get("dialect")).get("type"), "keyword");
+    assertEquals(((Map<String, Object>) aspectMapping.get("apiVersion")).get("type"), "integer");
+    assertEquals(((Map<String, Object>) aspectMapping.get("editable")).get("type"), "boolean");
+    assertFalse(aspectMapping.containsKey("query"));
   }
 
   private V3SearchDocumentProjector realProjector() {

@@ -28,9 +28,10 @@ import com.linkedin.common.Urn
  * An empty list drops it. A non-empty list replaces it. A name this release does not implement is
  * rejected when the template is written and when it is loaded.
  *
- * {@code parent} is {@code @Searchable} with {@code queryByDefault} false, so a write can find
- * the templates that name this one as parent. No other field is searchable. {@code aspectJson}
- * stores this aspect's JSON, the same JSON stored in SQL, at
+ * {@code dialect}, {@code apiVersion}, {@code parent}, and {@code editable} are searchable with
+ * {@code queryByDefault} false. A write uses {@code parent} to find its children; the other
+ * fields support template administration filters. {@code aspectJson} stores this aspect's JSON,
+ * the same JSON stored in SQL, at
  * {@code _aspects.searchTemplateProperties._aspectJson} without indexing it, so a template
  * reload can read the body from search. Write time and actor stay on system metadata
  * ({@code aspectCreated}, {@code aspectModified}): SQL stores them on the aspect row, and search
@@ -56,6 +57,11 @@ record SearchTemplateProperties {
    * Body language. Elasticsearch and OpenSearch share {@code ELASTICSEARCH}. {@code POSTGRES}
    * stores Mustache text for a future SQL compiler and is not executed by this release.
    */
+  @Searchable = {
+    "fieldName": "dialect",
+    "fieldType": "KEYWORD",
+    "queryByDefault": false
+  }
   dialect: enum SearchTemplateDialect {
     ELASTICSEARCH
     POSTGRES
@@ -65,6 +71,11 @@ record SearchTemplateProperties {
    * Template and Mustache-context contract. This release implements 1. Unset inherits the parent
    * version, or 1 when no ancestor sets it. Any other value is rejected at write and at load.
    */
+  @Searchable = {
+    "fieldName": "apiVersion",
+    "fieldType": "COUNT",
+    "queryByDefault": false
+  }
   apiVersion: optional int
 
   /**
@@ -210,5 +221,10 @@ record SearchTemplateProperties {
   /**
    * When false, only the system actor may change this template.
    */
+  @Searchable = {
+    "fieldName": "editable",
+    "fieldType": "BOOLEAN",
+    "queryByDefault": false
+  }
   editable: boolean = true
 }
