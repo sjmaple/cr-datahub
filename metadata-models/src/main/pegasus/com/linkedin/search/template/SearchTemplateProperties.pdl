@@ -1,6 +1,5 @@
 namespace com.linkedin.search.template
 
-import com.linkedin.common.AuditStamp
 import com.linkedin.common.Urn
 
 /**
@@ -33,7 +32,9 @@ import com.linkedin.common.Urn
  * the templates that name this one as parent. No other field is searchable. {@code aspectJson}
  * stores this aspect's JSON, the same JSON stored in SQL, at
  * {@code _aspects.searchTemplateProperties._aspectJson} without indexing it, so a template
- * reload can read the body from search. The entity stays out of the default search, browse, and
+ * reload can read the body from search. Write time and actor stay on system metadata
+ * ({@code aspectCreated}, {@code aspectModified}): SQL stores them on the aspect row, and search
+ * copies them to {@code _system}. The entity stays out of the default search, browse, and
  * autocomplete entity-type lists.
  */
 @Aspect = {
@@ -210,17 +211,4 @@ record SearchTemplateProperties {
    * When false, only the system actor may change this template.
    */
   editable: boolean = true
-
-  /**
-   * When this template was first written. Callers omit this; the server sets it on the first write.
-   * Not searchable.
-   */
-  created: optional AuditStamp
-
-  /**
-   * When this template was last written. Callers omit this; every accepted write sets it to the
-   * write time. Not searchable. The search-result cache key includes this stamp along the parent
-   * chain.
-   */
-  lastModified: optional AuditStamp
 }
