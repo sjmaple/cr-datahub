@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import lombok.Value;
 
 /**
@@ -175,15 +174,25 @@ public final class SearchFieldResolver {
   /**
    * The boolean a label writes when a source is populated. Degree 0 is {@code hasDescription} for
    * {@code description}. Degree 1 is {@code hasDescription_1} for {@code description_1}. Empty when
-   * the field declares none.
+   * the field declares none or the source spans multiple degree-specific labels.
    */
   @Nonnull
   public Optional<String> hasValuesFieldName(@Nonnull String fieldName) {
     Field field = fields.get(parent(fieldName));
-    if (field == null || field.getHasValuesFieldName() == null) {
+    if (field == null || field.getHasValuesFieldNames().size() != 1) {
       return Optional.empty();
     }
-    return Optional.of(field.getHasValuesFieldName());
+    return Optional.of(field.getHasValuesFieldNames().get(0));
+  }
+
+  /**
+   * The booleans written when a source is populated. A source shared across entity types can point
+   * at more than one degree-specific label and therefore more than one boolean.
+   */
+  @Nonnull
+  public List<String> hasValuesFieldNames(@Nonnull String fieldName) {
+    Field field = fields.get(parent(fieldName));
+    return field == null ? List.of() : field.getHasValuesFieldNames();
   }
 
   public boolean contains(@Nonnull String fieldName) {
@@ -242,6 +251,9 @@ public final class SearchFieldResolver {
     if (field.isIndexed()) {
       throw new IllegalArgumentException(
           "Search V3 field '" + fieldName + "' contains on its keyword field");
+    }
+    if (!field.getAnalyzedPaths().isEmpty()) {
+      return field.getAnalyzedPaths();
     }
     List<String> paths = new ArrayList<>();
     if (field.getSubfields().contains(V3SearchFields.TEXT)) {
@@ -351,6 +363,10 @@ public final class SearchFieldResolver {
       String name,
       MutableField indexedField) {
     if (splitSourceNames.contains(name)) {
+      MutableField source = sources.get(name);
+      if (source != null) {
+        source.addSearchTarget(indexedField);
+      }
       return;
     }
     MutableField prior = aliasedTo.get(name);
@@ -358,6 +374,8 @@ public final class SearchFieldResolver {
       splitSourceNames.add(name);
       MutableField source = sources.get(name);
       if (source != null) {
+        source.addSearchTarget(prior);
+        source.addSearchTarget(indexedField);
         byName.put(name, source);
       } else {
         byName.remove(name);
@@ -405,7 +423,8 @@ public final class SearchFieldResolver {
     @Nonnull Set<String> subfields;
     @Nonnull Set<String> sourceFields;
     @Nonnull Set<Intent> supportedIntents;
-    @Nullable String hasValuesFieldName;
+    @Nonnull List<String> hasValuesFieldNames;
+    @Nonnull List<String> analyzedPaths;
 
     boolean supports(Intent intent) {
       return supportedIntents.contains(intent);
@@ -419,7 +438,8 @@ public final class SearchFieldResolver {
     private final List<String> parsedExactPaths = new ArrayList<>();
     private final Set<String> subfields = new LinkedHashSet<>();
     private final Set<String> sources = new LinkedHashSet<>();
-    private String hasValuesFieldName;
+    private final Set<String> hasValuesFieldNames = new LinkedHashSet<>();
+    private final Set<String> analyzedPaths = new LinkedHashSet<>();
 
     private MutableField(String path) {
       this.path = path;
@@ -442,17 +462,27 @@ public final class SearchFieldResolver {
     }
 
     private void setHasValues(String name) {
-      if (hasValuesFieldName != null && !hasValuesFieldName.equals(name)) {
+      if (!hasValuesFieldNames.isEmpty() && !hasValuesFieldNames.contains(name)) {
         throw new IllegalArgumentException(
             "Search V3 field '"
                 + path
                 + "' declares both '"
-                + hasValuesFieldName
+                + hasValuesFieldNames.iterator().next()
                 + "' and '"
                 + name
                 + "' as hasValuesFieldName");
       }
-      hasValuesFieldName = name;
+      hasValuesFieldNames.add(name);
+    }
+
+    private void addSearchTarget(MutableField target) {
+      hasValuesFieldNames.addAll(target.hasValuesFieldNames);
+      if (target.subfields.contains(V3SearchFields.TEXT)) {
+        analyzedPaths.add(target.path + "." + V3SearchFields.TEXT);
+      }
+      if (target.subfields.contains(V3SearchFields.STEMMED)) {
+        analyzedPaths.add(target.path + "." + V3SearchFields.STEMMED);
+      }
     }
 
     private void merge(MutableField source) {
@@ -461,9 +491,8 @@ public final class SearchFieldResolver {
       }
       subfields.addAll(source.subfields);
       sources.addAll(source.sources);
-      if (source.hasValuesFieldName != null) {
-        setHasValues(source.hasValuesFieldName);
-      }
+      hasValuesFieldNames.addAll(source.hasValuesFieldNames);
+      analyzedPaths.addAll(source.analyzedPaths);
     }
 
     private Field toField() {
@@ -478,6 +507,9 @@ public final class SearchFieldResolver {
         intents.add(Intent.RANGE);
         intents.add(Intent.CONTAIN);
       } else if (analyzed) {
+        intents.add(Intent.CONTAIN);
+      }
+      if (!analyzedPaths.isEmpty()) {
         intents.add(Intent.CONTAIN);
       }
       if (resolvedRoot.isDocValues()) {
@@ -498,7 +530,8 @@ public final class SearchFieldResolver {
           Set.copyOf(subfields),
           Set.copyOf(sources),
           Set.copyOf(intents),
-          hasValuesFieldName);
+          List.copyOf(hasValuesFieldNames),
+          List.copyOf(analyzedPaths));
     }
   }
 }

@@ -257,6 +257,18 @@ public class SearchFieldResolverTest {
     SearchFieldResolver sharedRecord = new SearchFieldResolver(List.of(dataset, businessAttribute));
     assertEquals(
         sharedRecord.resolve("editedFieldTags", Intent.FILTER).getPath(), "editedFieldTags");
+    assertTrue(sharedRecord.supports("editedFieldDescriptions", Intent.CONTAIN));
+    assertEquals(
+        Set.copyOf(sharedRecord.analyzedPaths("editedFieldDescriptions")),
+        Set.of(
+            "description.text",
+            "description.stemmed",
+            "description_1.text",
+            "description_1.stemmed"));
+    assertEquals(
+        Set.copyOf(sharedRecord.hasValuesFieldNames("editedFieldDescriptions")),
+        Set.of("hasDescription", "hasDescription_1"));
+    assertEquals(sharedRecord.hasValuesFieldName("editedFieldDescriptions"), Optional.empty());
     assertEquals(sharedRecord.resolve("tags", Intent.FILTER).getPath(), "tags");
     assertEquals(sharedRecord.resolve("tags_1", Intent.FILTER).getPath(), "tags_1");
     assertEquals(sharedRecord.hasValuesFieldName("tags"), Optional.of("hasTags"));

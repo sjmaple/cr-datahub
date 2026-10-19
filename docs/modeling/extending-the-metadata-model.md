@@ -638,7 +638,7 @@ fields, and `copyUrnTo` copies the complete URN. A destination named in both lis
 subfields. `queryByDefault` decides whether an unqualified search includes the property.
 `boostScore` is the weight of `.text` (0.8 when unset) and `subfieldBoostScores.stemmed` is the weight of `.stemmed`
 (half the `.text` weight when unset). `copyTo` names shared fields (`name`, `qualifiedName`, `description`,
-`columns`, `name_1`, `other`) or a root field that feeds one. `copyTo` copies the parsed name for a URN property, and `copyUrnTo` copies the complete URN. A destination named in both lists receives both values. The property field and the stored name stay as they are. Unset copies nowhere.
+`name_1`, `other`) or a root field that feeds one. `copyTo` copies the parsed name for a URN property, and `copyUrnTo` copies the complete URN. A destination named in both lists receives both values. The property field and the stored name stay as they are. Unset copies nowhere.
 `excludeFromFullTextSearch` applies to Search V2 and V2.5; Search V3 ignores it.
 Number and date properties are not analyzed, and a `copyTo` on one is ignored. A property with no `searchConfiguration`
 keeps its keyword, number or date field for filters and facets only.

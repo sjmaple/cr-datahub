@@ -63,6 +63,7 @@ import com.linkedin.metadata.search.ScrollResult;
 import com.linkedin.metadata.search.SearchEntity;
 import com.linkedin.metadata.search.SearchResult;
 import com.linkedin.metadata.search.elasticsearch.index.entity.v3.SearchFieldResolver;
+import com.linkedin.metadata.search.elasticsearch.index.entity.v3.V3SearchFields;
 import com.linkedin.metadata.search.elasticsearch.query.filter.QueryFilterRewriteChain;
 import com.linkedin.metadata.search.elasticsearch.query.request.SearchRequestHandler;
 import io.datahubproject.metadata.context.OperationContext;
@@ -924,13 +925,25 @@ public class SearchRequestHandlerTest extends AbstractTestNGSpringContextTests {
         "fieldDescriptions",
         "hasDescription_1",
         true);
+    String editedExists =
+        v3Filter(
+            List.of("dataset", "businessAttribute"),
+            buildExistsCriterion("editedFieldDescriptions"));
+    assertHasValuesExistence(editedExists, "editedFieldDescriptions", "hasDescription", false);
+    assertTrue(editedExists.contains("\"field\" : \"hasDescription_1\""), editedExists);
+    String editedMissing =
+        v3Filter(
+            List.of("dataset", "businessAttribute"),
+            buildIsNullCriterion("editedFieldDescriptions"));
+    assertHasValuesExistence(editedMissing, "editedFieldDescriptions", "hasDescription", true);
+    assertTrue(editedMissing.contains("\"field\" : \"hasDescription_1\""), editedMissing);
   }
 
   private static void assertHasValuesExistence(
       String query, String sourceField, String booleanField, boolean missing) {
     int fieldAt = query.indexOf("\"field\" : \"" + booleanField + "\"");
     assertTrue(fieldAt > 0, sourceField + " " + query);
-    String around = query.substring(Math.max(0, fieldAt - 120), fieldAt);
+    String around = query.substring(Math.max(0, fieldAt - (missing ? 500 : 120)), fieldAt);
     assertTrue(around.contains("\"exists\""), sourceField + " " + around);
     if (missing) {
       assertTrue(around.contains("must_not"), sourceField + " " + around);
@@ -982,6 +995,21 @@ public class SearchRequestHandlerTest extends AbstractTestNGSpringContextTests {
     assertTrue(fieldDescriptions.contains("\"description_1.stemmed\""), fieldDescriptions);
     assertTrue(fieldDescriptions.contains("\"fieldDescriptions\""), fieldDescriptions);
     assertFalse(fieldDescriptions.contains("wildcard"), fieldDescriptions);
+
+    String editedFieldDescriptions =
+        v3Filter(
+            List.of("dataset", "businessAttribute"),
+            buildCriterion("editedFieldDescriptions", Condition.CONTAIN, "data warehouse"));
+    assertTrue(editedFieldDescriptions.contains("\"description.text\""), editedFieldDescriptions);
+    assertTrue(
+        editedFieldDescriptions.contains("\"description.stemmed\""), editedFieldDescriptions);
+    assertTrue(editedFieldDescriptions.contains("\"description_1.text\""), editedFieldDescriptions);
+    assertTrue(
+        editedFieldDescriptions.contains("\"description_1.stemmed\""), editedFieldDescriptions);
+    assertFalse(
+        editedFieldDescriptions.contains("\"editedFieldDescriptions.text\""),
+        editedFieldDescriptions);
+    assertFalse(editedFieldDescriptions.contains("wildcard"), editedFieldDescriptions);
   }
 
   @Test
@@ -1093,6 +1121,23 @@ public class SearchRequestHandlerTest extends AbstractTestNGSpringContextTests {
   }
 
   private String v3Filter(Criterion... criteria) {
+    return v3Filter(
+        List.of("dataset"), cachedV3Resolver(V3_READ_CONFIG.getEntityIndex()), criteria);
+  }
+
+  private String v3Filter(List<String> entityTypes, Criterion... criteria) {
+    SearchFieldResolver resolver =
+        new SearchFieldResolver(
+            V3SearchFields.indexGroupSpecs(
+                operationContext.getEntityRegistry(),
+                entityTypes.stream()
+                    .map(operationContext.getEntityRegistry()::getEntitySpec)
+                    .toList()));
+    return v3Filter(entityTypes, resolver, criteria);
+  }
+
+  private String v3Filter(
+      List<String> entityTypes, SearchFieldResolver resolver, Criterion... criteria) {
     Filter filter =
         new Filter()
             .setOr(
@@ -1100,12 +1145,12 @@ public class SearchRequestHandlerTest extends AbstractTestNGSpringContextTests {
                     new ConjunctiveCriterion().setAnd(new CriterionArray(List.of(criteria)))));
     return SearchRequestHandler.getFilterQuery(
             operationContext,
-            List.of("dataset"),
+            entityTypes,
             filter,
             new HashMap<>(),
             QueryFilterRewriteChain.EMPTY,
             V3_READ_CONFIG.getEntityIndex(),
-            cachedV3Resolver(V3_READ_CONFIG.getEntityIndex()))
+            resolver)
         .toString();
   }
 

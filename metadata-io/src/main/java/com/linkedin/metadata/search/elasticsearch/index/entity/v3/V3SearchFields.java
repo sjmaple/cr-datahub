@@ -47,11 +47,12 @@ import javax.annotation.Nullable;
  *       bucket. Degree 0 is the value on the entity, and a higher degree is a child or related
  *       copy. The entity name is {@code name}. A schema field path or label is that name at degree
  *       1 ({@code name_1});
- *   <li>a string field queried by default that names none copies into the root field {@code other},
- *       so V3 still searches every field V2 searches. An entity whose fields name no {@code name}
- *       sends the field its {@code _entityName} alias names to {@code name} instead. The urn and
- *       fields of an entity a reference field names ({@code @SearchableRef}) only ever copy into
- *       {@code other}, and matched fields do not report them.
+ *   <li>a string field queried by default in V3 that names none copies into the root field {@code
+ *       other}. A field with {@code v3.queryByDefault: false} is excluded even when V2 queries it
+ *       by default. An entity whose fields name no {@code name} sends the field its {@code
+ *       _entityName} alias names to {@code name} instead. The urn and fields of an entity a
+ *       reference field names ({@code @SearchableRef}) only ever copy into {@code other}, and
+ *       matched fields do not report them.
  * </ul>
  *
  * <p>A field of type {@code URN} or {@code URN_PARTIAL}, or a root mapping of type {@code URN},
