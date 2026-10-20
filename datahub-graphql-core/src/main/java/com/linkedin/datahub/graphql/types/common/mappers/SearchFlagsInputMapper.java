@@ -89,7 +89,7 @@ public class SearchFlagsInputMapper
     if (searchFlags.getMinScore() != null) {
       result.setMinScore(searchFlags.getMinScore());
     }
-    if (searchFlags.getSearchTemplate() != null) {
+    if (searchFlags.getSearchTemplate() != null && !searchFlags.getSearchTemplate().isBlank()) {
       result.setSearchTemplate(requireSearchTemplate(searchFlags.getSearchTemplate()));
     }
     return result;
@@ -97,9 +97,6 @@ public class SearchFlagsInputMapper
 
   @Nonnull
   private static Urn requireSearchTemplate(@Nonnull String value) {
-    if (value.isBlank()) {
-      throw new ValidationException("searchTemplate must not be blank");
-    }
     final Urn urn;
     try {
       urn = Urn.createFromString(value);

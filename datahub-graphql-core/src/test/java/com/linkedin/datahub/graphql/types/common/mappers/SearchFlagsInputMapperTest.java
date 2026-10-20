@@ -50,10 +50,14 @@ public class SearchFlagsInputMapperTest {
   }
 
   @Test
-  public void testSearchTemplateRejectsBlankMalformedAndOtherEntityTypes() {
+  public void testSearchTemplateBlankIsUnsetAndInvalidUrnsAreRejected() {
     SearchFlags blank = new SearchFlags();
     blank.setSearchTemplate("");
-    assertThrows(ValidationException.class, () -> SearchFlagsInputMapper.map(null, blank));
+    assertFalse(SearchFlagsInputMapper.map(null, blank).hasSearchTemplate());
+
+    SearchFlags whitespace = new SearchFlags();
+    whitespace.setSearchTemplate("  ");
+    assertFalse(SearchFlagsInputMapper.map(null, whitespace).hasSearchTemplate());
 
     SearchFlags invalid = new SearchFlags();
     invalid.setSearchTemplate("not a urn");

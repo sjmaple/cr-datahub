@@ -17,7 +17,7 @@ public final class SearchTemplateFlags {
       @Nonnull SearchFlags flags,
       @Nullable String searchTemplate,
       @Nullable Boolean includeExplain) {
-    if (searchTemplate != null) {
+    if (searchTemplate != null && !searchTemplate.isBlank()) {
       flags.setSearchTemplate(requireSearchTemplate(searchTemplate));
     }
     if (includeExplain != null) {
