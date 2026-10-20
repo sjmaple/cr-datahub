@@ -6,6 +6,7 @@ import com.linkedin.metadata.models.SearchableFieldSpec;
 import com.linkedin.metadata.models.annotation.SearchableAnnotation;
 import com.linkedin.metadata.models.annotation.v3.FieldMapping;
 import com.linkedin.metadata.models.annotation.v3.FieldMapping.Type;
+import com.linkedin.metadata.search.utils.ESUtils;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -228,7 +229,7 @@ public final class SearchFieldResolver {
       return V3SearchFields.fullUrnField(field.getPath());
     }
     return field.isKeywordSubfield() && intent != Intent.SORT
-        ? field.getPath() + ".keyword"
+        ? field.getPath() + ESUtils.KEYWORD_SUFFIX
         : field.getPath();
   }
 
@@ -245,10 +246,10 @@ public final class SearchFieldResolver {
     }
     List<String> paths = new ArrayList<>();
     if (field.getSubfields().contains(V3SearchFields.TEXT)) {
-      paths.add(field.getPath() + "." + V3SearchFields.TEXT);
+      paths.add(field.getPath() + V3SearchFields.TEXT_SUFFIX);
     }
     if (field.getSubfields().contains(V3SearchFields.STEMMED)) {
-      paths.add(field.getPath() + "." + V3SearchFields.STEMMED);
+      paths.add(field.getPath() + V3SearchFields.STEMMED_SUFFIX);
     }
     return List.copyOf(paths);
   }
@@ -375,9 +376,9 @@ public final class SearchFieldResolver {
       stripped = false;
       for (String suffix :
           List.of(
-              ".keyword",
-              "." + V3SearchFields.TEXT,
-              "." + V3SearchFields.STEMMED,
+              ESUtils.KEYWORD_SUFFIX,
+              V3SearchFields.TEXT_SUFFIX,
+              V3SearchFields.STEMMED_SUFFIX,
               "." + V3SearchFields.PARSED_KEYWORD,
               "." + V3SearchFields.LOWERCASE,
               ".ngram",
